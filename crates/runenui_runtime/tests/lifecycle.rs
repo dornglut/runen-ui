@@ -27,6 +27,19 @@ struct LifetimeWidget {
 }
 
 impl Widget<()> for LifetimeWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = LifetimeState;
 
     fn create_state(&self) -> Self::State {
@@ -61,6 +74,28 @@ enum Action {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 2 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = AppState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -101,7 +136,8 @@ fn replacement_unmounts_live_postorder_then_drops_before_new_preorder_mount() {
     let mut runtime = AppRuntime::<App>::mount(AppState {
         replacement: false,
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|_| unreachable!("lifecycle fixture admission is valid"));
     let old_root = runtime.index().nodes()[0].id().clone();
     let old_child = runtime.index().nodes()[1].id().clone();
     assert_eq!(

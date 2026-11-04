@@ -375,8 +375,12 @@ struct RoutedTransactionAdmissionPlan {
 }
 ```
 
-One shared configured `transaction_outputs` allowance covers every route callback
-and semantic default. It counts:
+One shared configured `transaction_outputs` allowance covers every callback and
+semantic default of each routed pass. Composition cancellation and FocusOut keep
+independent passes and allowances. The finite causal-root admission and owned
+failure rules are defined by
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure);
+per-route preflight is not a substitute for whole-turn funding. The allowance counts:
 
 - each application action;
 - each delegated command;

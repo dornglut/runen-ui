@@ -29,6 +29,36 @@ enum Action {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixture has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event output budgets sum to 0 across the mounted owners. Bound
+        // ordinary/boundary route passes and four focus passes, plus four
+        // activation/default outputs. Owner reconciliation and the cursor
+        // service outcome/cancel pair stay inside the same finite frontier.
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -52,6 +82,22 @@ struct Probe {
 }
 
 impl Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -116,7 +162,8 @@ fn harness(config: RuntimeConfig) -> Harness {
             activations: Rc::clone(&activations),
         },
         config,
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
@@ -198,7 +245,9 @@ fn assert_causal_ancestor(
 
 #[test]
 fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
-    let mut harness = harness(RuntimeConfig::default().with_queue_capacity(1));
+    // The complete declared pointer frontier, rather than only its envelope,
+    // must fit again after the ordinary roots drain.
+    let mut harness = harness(RuntimeConfig::default().with_queue_capacity(8));
     pump_all(&mut harness.runtime);
     let (Some(expected_first_sequence), _) = harness.runtime.__routed_sequence_state_for_test()
     else {
@@ -209,6 +258,12 @@ fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
         .submit_action(Action::Noop)
         .unwrap_or_else(|_| unreachable!("the drained single queue slot is available"));
     assert_eq!(first_sequence.get(), expected_first_sequence);
+    for _ in 0..7 {
+        harness
+            .runtime
+            .submit_action(Action::Noop)
+            .unwrap_or_else(|_| unreachable!("unary follower fits"));
+    }
     let event = pointer_event(&harness, 101, PointerPhase::Move, false);
     let trace_len = harness.runtime.trace().len();
 
@@ -228,7 +283,7 @@ fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
     assert_eq!(
         accepted.sequence().get(),
         expected_first_sequence
-            .checked_add(1)
+            .checked_add(8)
             .unwrap_or_else(|| unreachable!("the test sequence is not exhausted")),
     );
 }

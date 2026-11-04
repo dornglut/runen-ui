@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::time::Duration;
 
@@ -32,6 +44,22 @@ struct Probe {
 }
 
 impl Widget<()> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -79,6 +107,30 @@ impl Widget<()> for Probe {
 struct PresentationIntegrationApp;
 
 impl UiApp for PresentationIntegrationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 4 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 2)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -266,7 +318,7 @@ fn focus_command(
 
 #[test]
 fn sampled_presentation_correlates_paint_hit_focus_semantics_and_clips() {
-    let mut runtime = AppRuntime::<PresentationIntegrationApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PresentationIntegrationApp>::mount(()));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -330,6 +382,28 @@ fn sampled_presentation_correlates_paint_hit_focus_semantics_and_clips() {
 struct SingularPresentationApp;
 
 impl UiApp for SingularPresentationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -378,7 +452,7 @@ fn singular_timeline() -> ExplicitTimeline {
 
 #[test]
 fn singular_sample_preserves_empty_hit_and_noninvertible_diagnostics() {
-    let mut runtime = AppRuntime::<SingularPresentationApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<SingularPresentationApp>::mount(()));
     let environment = StyleEnvironment::default();
     let _ = publish(&mut runtime, &environment);
     runtime
@@ -404,6 +478,34 @@ fn singular_sample_preserves_empty_hit_and_noninvertible_diagnostics() {
 struct InteractionTransitionApp;
 
 impl UiApp for InteractionTransitionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Callback-free pointer defaults can derive two focus notifications
+        // and one cursor service with its outcome/cancel pair.
+        runenui_core::ProducerBudget::new(6, 3)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -499,7 +601,7 @@ fn pump_all<App: UiApp>(runtime: &mut AppRuntime<App>) {
 
 #[test]
 fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
-    let mut runtime = AppRuntime::<InteractionTransitionApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<InteractionTransitionApp>::mount(()));
     let environment = interaction_environment();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("interaction surface size is finite"));

@@ -150,7 +150,7 @@
 //! #   fn root(_: &()) -> impl View<()> { text("x") }
 //! #   fn update(_: &mut (), _: ()) -> impl IntoUpdateOutput<(), NoHostProtocol> {}
 //! # }
-//! let mut runtime = AppRuntime::<App>::mount(());
+//! let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
 //! runtime.dispatch(());
 //! ```
 //!
@@ -220,7 +220,7 @@ mod transaction;
 mod wake;
 mod work;
 
-pub use app::AppRuntime;
+pub use app::{AppRuntime, InitialAdmissionError, InitialAdmissionErrorKind};
 pub use clock::{ManualClock, MonotonicClock, MonotonicInstant, MonotonicTimeError};
 pub use command::{
     CommandSubmission, SubmitCommandError, SubmitCommandErrorKind, UnacceptedCommand,
@@ -335,5 +335,6 @@ pub use trace::{
     TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
+pub use work::WorkFamily as WorkCapacityFamily;
 pub use work::framework_service::{FrameworkServiceRef, FrameworkServiceToken};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

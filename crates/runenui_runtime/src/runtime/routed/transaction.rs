@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use runenui_core::{
     __runtime::{MountedEffect, PointerCaptureRequest},
     ApplicationCommandDisposition, CommandOrigin, DragDropEvent, InputModality, LogicalDelta,
@@ -37,6 +39,10 @@ pub(crate) struct RoutedIngressFacts {
     pub(crate) trace_reservation: TraceReservation,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
     pub(crate) focus_request_override: Option<FocusRequestOverride>,
+    pub(crate) root_quota: Option<crate::queue::RootQuotaId>,
+    pub(crate) default_work_starts: runenui_core::WorkStartBudget,
+    pub(crate) default_output_budget: usize,
+    pub(crate) default_queue_start_outputs: usize,
 }
 
 impl RoutedIngressFacts {
@@ -59,6 +65,10 @@ impl RoutedIngressFacts {
             trace_reservation,
             semantic_target: None,
             focus_request_override: None,
+            root_quota: None,
+            default_work_starts: runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0),
+            default_output_budget: 0,
+            default_queue_start_outputs: 0,
         }
     }
 
@@ -69,6 +79,29 @@ impl RoutedIngressFacts {
 
     pub(crate) fn with_focus_request_override(mut self, request: FocusRequestOverride) -> Self {
         self.focus_request_override = Some(request);
+        self
+    }
+
+    pub(crate) const fn with_root_quota(mut self, root_quota: crate::queue::RootQuotaId) -> Self {
+        self.root_quota = Some(root_quota);
+        self
+    }
+
+    pub(crate) const fn with_default_work_starts(
+        mut self,
+        default_work_starts: runenui_core::WorkStartBudget,
+    ) -> Self {
+        self.default_work_starts = default_work_starts;
+        self
+    }
+
+    pub(crate) const fn with_default_output_budget(mut self, output_budget: usize) -> Self {
+        self.default_output_budget = output_budget;
+        self
+    }
+
+    pub(crate) const fn with_default_queue_start_outputs(mut self, outputs: usize) -> Self {
+        self.default_queue_start_outputs = outputs;
         self
     }
 }
@@ -113,6 +146,7 @@ pub(crate) enum PointerSelectionTransition {
 #[allow(clippy::struct_excessive_bools)] // Independent routed default, propagation and host-claim facts.
 pub(crate) struct RoutedTransaction<Action> {
     pub(crate) sequence: WorkSequence,
+    pub(crate) root_quota: Option<crate::queue::RootQuotaId>,
     pub(crate) target: MountedNodeId,
     pub(crate) origin: CommandOrigin,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
@@ -125,6 +159,8 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) target_trace: TraceTarget,
     pub(crate) parent: Option<TraceSequence>,
     pub(in crate::runtime) remaining_outputs: usize,
+    pub(in crate::runtime) callback_output_budgets:
+        HashMap<MountedNodeId, runenui_core::WidgetProducerBudget>,
     pub(crate) remaining_default_outputs: usize,
     pub(crate) propagation_stopped: bool,
     pub(crate) host_input_claimed: bool,
@@ -178,6 +214,11 @@ impl<Action> RoutedTransaction<Action> {
 
     pub(super) fn output_allowance(&self, owner: &MountedNodeId) -> usize {
         self.remaining_outputs
+            .min(
+                self.callback_output_budgets
+                    .get(owner)
+                    .map_or(0, |budget| budget.outputs()),
+            )
             .checked_add(self.subscription_credit(owner))
             .unwrap_or_else(|| unreachable!("one coalescing credit fits"))
     }

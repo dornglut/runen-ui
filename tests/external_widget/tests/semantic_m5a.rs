@@ -44,6 +44,22 @@ fn expected_contribution() -> SemanticContribution {
 }
 
 impl Widget<ChildAction> for SemanticProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -60,6 +76,33 @@ impl Widget<ChildAction> for SemanticProbe {
 struct MappedSemanticApp;
 
 impl UiApp for MappedSemanticApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 2, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = ();
     type Action = AppAction;
     type HostProtocol = NoHostProtocol;
@@ -84,6 +127,22 @@ impl UiApp for MappedSemanticApp {
 struct InvalidSemanticProbe;
 
 impl Widget<()> for InvalidSemanticProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -101,6 +160,33 @@ impl Widget<()> for InvalidSemanticProbe {
 struct InvalidSemanticApp;
 
 impl UiApp for InvalidSemanticApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -141,7 +227,8 @@ fn published_semantic_child(
 
 #[test]
 fn recursive_action_mapping_preserves_composed_semantic_product() {
-    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let (semantics, _) = published_semantic_child(&mut runtime);
     let snapshot = semantics.snapshot();
     let primary = snapshot
@@ -172,7 +259,8 @@ fn recursive_action_mapping_preserves_composed_semantic_product() {
 
 #[test]
 fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
-    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let (semantics, owner_bounds) = published_semantic_child(&mut runtime);
     let detail = semantics
         .snapshot()
@@ -197,7 +285,8 @@ fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
-    let mut runtime = AppRuntime::<InvalidSemanticApp>::mount(());
+    let mut runtime = AppRuntime::<InvalidSemanticApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

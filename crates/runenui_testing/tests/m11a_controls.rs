@@ -20,7 +20,34 @@ struct State {
 
 struct ControlsApp;
 
+impl ControlsApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 3 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 3;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ControlsApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -72,7 +99,8 @@ fn text_is_static_semantic_content_without_activation() {
     let mut harness = TestHarness::<ControlsApp>::mount(State {
         enabled: true,
         activations: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let text_query = SemanticQuery::new()
@@ -92,7 +120,8 @@ fn button_semantic_activation_is_repeatable_and_application_owned() {
     let mut harness = TestHarness::<ControlsApp>::mount(State {
         enabled: true,
         activations: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let target = harness
@@ -119,7 +148,8 @@ fn disabled_button_remains_semantic_but_rejects_activation() {
     let mut harness = TestHarness::<ControlsApp>::mount(State {
         enabled: false,
         activations: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let target = harness

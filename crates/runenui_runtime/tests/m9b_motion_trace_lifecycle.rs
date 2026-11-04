@@ -21,6 +21,29 @@ struct TraceState {
 struct TraceLifecycleApp;
 
 impl UiApp for TraceLifecycleApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TraceState;
     type Action = Duration;
     type HostProtocol = NoHostProtocol;
@@ -152,7 +175,8 @@ fn observed_since(runtime: &AppRuntime<TraceLifecycleApp>, start: usize) -> Vec<
 fn explicit_trace_uses_core_sampling_metadata_and_retains_completion() {
     let mut runtime = AppRuntime::<TraceLifecycleApp>::mount(TraceState {
         duration: Duration::from_millis(100),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let initial_start = runtime.trace().len();
     publish(&mut runtime);
@@ -226,7 +250,8 @@ fn explicit_trace_uses_core_sampling_metadata_and_retains_completion() {
 fn explicit_replacement_traces_old_sample_then_replacement_before_new_start() {
     let mut runtime = AppRuntime::<TraceLifecycleApp>::mount(TraceState {
         duration: Duration::from_millis(100),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     publish(&mut runtime);
     runtime
         .advance_time(Duration::from_millis(50))
@@ -262,7 +287,8 @@ fn explicit_replacement_traces_old_sample_then_replacement_before_new_start() {
 fn zero_duration_trace_preserves_start_before_same_candidate_completion() {
     let mut runtime = AppRuntime::<TraceLifecycleApp>::mount(TraceState {
         duration: Duration::ZERO,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let start = runtime.trace().len();
     publish(&mut runtime);

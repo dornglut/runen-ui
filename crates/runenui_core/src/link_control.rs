@@ -92,6 +92,23 @@ impl<Action> fmt::Debug for LinkWidget<Action> {
 }
 
 impl<Action> Widget<Action> for LinkWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Activation => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = LinkState;
 
     fn create_state(&self) -> Self::State {

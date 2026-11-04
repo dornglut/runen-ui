@@ -11,6 +11,25 @@ use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 struct TypedSemanticProbe;
 
 impl Widget<()> for TypedSemanticProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Publication => {
+                runenui_core::WidgetProducerBudget::new(0).with_publication_reveals(1)
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -92,7 +111,37 @@ impl Widget<()> for TypedSemanticProbe {
 
 struct ProbeApp;
 
+impl ProbeApp {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(nodes, nodes, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for ProbeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -112,7 +161,8 @@ impl UiApp for ProbeApp {
 
 #[test]
 fn downstream_widget_publishes_selected_m11_typed_semantics_through_public_apis() {
-    let mut runtime = AppRuntime::<ProbeApp>::mount(());
+    let mut runtime = AppRuntime::<ProbeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let style = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

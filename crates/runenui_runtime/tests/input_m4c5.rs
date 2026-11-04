@@ -168,6 +168,22 @@ impl InputWidget {
 }
 
 impl Widget<InputAction> for InputWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -220,6 +236,22 @@ struct ReplacementWidget {
 }
 
 impl Widget<InputAction> for ReplacementWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -281,6 +313,58 @@ impl Widget<InputAction> for ReplacementWidget {
 struct InputApp;
 
 impl UiApp for InputApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let node_count =
+            2 + usize::from(state.target_present) + usize::from(state.duplicate_target_id);
+        runenui_core::ProducerBudget::new(node_count, 0)
+            .with_reconciliation(node_count, 0, node_count)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            InputAction::Activated => runenui_core::ProducerBudget::new(1, 0),
+            InputAction::Remove
+            | InputAction::Replace
+            | InputAction::Disable
+            | InputAction::MakeNotActionable
+            | InputAction::LoseTextCapability
+            | InputAction::LoseCompositionCapability => {
+                runenui_core::ProducerBudget::new(4, 0).with_reconciliation(4, 4, 4)
+            }
+        }
+        .with_subscriptions(0, 0)
+        .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let input_method =
+            state.target_present && (state.text_capable || state.composition_capable);
+        let framework_services = usize::from(input_method);
+        let default_outputs = usize::from(input_method) + usize::from(state.actionable);
+        runenui_core::ProducerBudget::new(4, default_outputs)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(
+                0,
+                0,
+                0,
+                0,
+                framework_services,
+            ))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(
+                0,
+                0,
+                0,
+                0,
+                0,
+                framework_services,
+            ))
+    }
+
     type State = InputState;
     type Action = InputAction;
     type HostProtocol = NoHostProtocol;
@@ -386,7 +470,8 @@ fn mounted(state: InputState) -> AppRuntime<InputApp> {
 }
 
 fn mounted_with_config(state: InputState, config: RuntimeConfig) -> AppRuntime<InputApp> {
-    let mut runtime = AppRuntime::<InputApp>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<InputApp>::mount_with_config(state, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -412,7 +497,7 @@ fn focus(runtime: &mut AppRuntime<InputApp>, authored_id: &str) {
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("fixture target accepts focus"));
+        .unwrap_or_else(|error| unreachable!("fixture target focus is refused: {error:?}"));
     settle(runtime);
 }
 
@@ -780,7 +865,6 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 }
 
 #[test]
-#[allow(clippy::assert_is_empty)]
 #[allow(
     clippy::too_many_lines,
     reason = "this one conformance row keeps Enter, matched Space, and exact admission-boundary proof together"
@@ -789,7 +873,7 @@ fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callb
     let config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
             .with_waiting_envelopes(4)
-            .with_transaction_outputs(1),
+            .with_transaction_outputs(2),
     );
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut enter = mounted_with_config(InputState::standard(Rc::clone(&log)), config);
@@ -911,7 +995,7 @@ fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callb
         boundary.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
     );
-    assert!(boundary_log.borrow().is_empty());
+    assert_eq!(boundary_log.borrow().as_slice(), &[]);
     assert_eq!(boundary.state().activations, 0);
     assert!(kinds(&boundary).iter().any(|kind| matches!(
         kind,
@@ -1771,8 +1855,9 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
     let bounded_log = Rc::new(RefCell::new(Vec::new()));
     let bounded_config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
-            .with_waiting_envelopes(3)
-            .with_transaction_outputs(1),
+            // Retain the four-credit composition beside the three followers.
+            .with_waiting_envelopes(8)
+            .with_transaction_outputs(2),
     );
     let mut bounded = mounted_with_config(
         InputState::standard(Rc::clone(&bounded_log)),
@@ -1784,30 +1869,17 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
         .unwrap_or_else(|_| unreachable!("live composition starts before bounded cleanup"));
     settle(&mut bounded);
     clear_log(&bounded);
-    bounded
-        .submit_action(InputAction::Remove)
-        .unwrap_or_else(|_| unreachable!("removal occupies the FIFO head"));
-    for _ in 0..2 {
+    for _ in 0..3 {
         bounded
             .submit_action(InputAction::Activated)
-            .unwrap_or_else(|_| unreachable!("filler occupies cancellation capacity"));
+            .unwrap_or_else(|_| unreachable!("filler occupies cleanup capacity"));
     }
-    let _ = bounded
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
-    assert_eq!(
-        bounded.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
-    );
-    assert!(
-        !bounded_log
-            .borrow()
-            .iter()
-            .any(|fact| fact.input == ObservedInput::Unmounted),
-        "the reconciliation plan never applies after required cancellation admission fails"
-    );
+    let Err(refused) = bounded.submit_action(InputAction::Remove) else {
+        unreachable!("removal cannot consume the live cleanup reserve");
+    };
+    assert_eq!(refused.kind(), runenui_runtime::SubmitActionErrorKind::Full);
+    let removal = refused.into_action();
+    assert_eq!(bounded.status(), RuntimeStatus::Running);
     assert!(bounded.index().nodes().iter().any(|node| {
         node.authored_id()
             == Some(
@@ -1815,53 +1887,56 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
                     .unwrap_or_else(|_| unreachable!("valid authored id")),
             )
     }));
-    let rejection = bounded
-        .trace()
-        .records()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::RoutedEventAdmissionRejected {
-                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
-                }
+    assert!(!bounded.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::CompositionCancelled {
+            reason: runenui_runtime::CompositionCancelReason::Removal
+        }
+    )));
+    let _ = bounded
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    bounded.submit_action(removal).unwrap_or_else(|_| {
+        unreachable!("the exact refused removal retries after capacity returns")
+    });
+    let _ = bounded
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("retry observation"))
+        .report()
+        .to_owned();
+    assert_eq!(bounded.status(), RuntimeStatus::Running);
+    assert!(!bounded.index().nodes().iter().any(|node| {
+        node.authored_id()
+            == Some(
+                &runenui_core::ElementId::new("target")
+                    .unwrap_or_else(|_| unreachable!("valid authored id")),
             )
-        })
-        .unwrap_or_else(|| unreachable!("bounded cleanup records its exact admission rejection"));
-    let retired = bounded
-        .trace()
-        .records()
-        .find(|record| {
-            matches!(record.kind(), TraceRecordKind::CompositionRetired)
-                && record.context().delivery() == Some(TraceDeliveryOutcome::Suppressed)
-        })
-        .unwrap_or_else(|| unreachable!("failed bounded cleanup explicitly retires composition"));
-    let cleanup = retired
-        .context()
-        .input()
-        .unwrap_or_else(|| unreachable!("suppressed retirement owns typed composition facts"));
-    assert_eq!(cleanup.role(), TraceInputRecordRole::CompositionCleanup);
-    assert_eq!(cleanup.delivery(), Some(TraceDeliveryOutcome::Suppressed));
-    assert_eq!(
-        cleanup
-            .composition()
-            .unwrap_or_else(|| unreachable!("suppressed cleanup retains exact lifetime"))
-            .generation(),
-        bounded_start.generation()
+    }));
+    assert!(bounded.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::CompositionCancelled {
+            reason: runenui_runtime::CompositionCancelReason::Removal
+        }
+    ) && record.work_sequence()
+        == Some(bounded_start.sequence())));
+    assert!(
+        bounded_log
+            .borrow()
+            .iter()
+            .any(|fact| fact.input == ObservedInput::Unmounted)
     );
-    assert_eq!(retired.causal_parent(), Some(rejection.sequence()));
-    let terminal = bounded
-        .trace()
-        .records()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::RuntimeTerminal {
-                    reason: RuntimeTerminalReason::Poisoned
-                }
-            )
-        })
-        .unwrap_or_else(|| unreachable!("bounded cleanup failure terminalizes"));
-    assert_eq!(terminal.causal_parent(), Some(retired.sequence()));
 
     let bridge_log = Rc::new(RefCell::new(Vec::new()));
     let mut bridge = mounted(InputState::standard(Rc::clone(&bridge_log)));

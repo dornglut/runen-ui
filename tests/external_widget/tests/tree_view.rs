@@ -35,6 +35,52 @@ enum Action {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let owners = if state.expanded { 9 } else { 5 };
+        runenui_core::ProducerBudget::new(owners, 0)
+            .with_reconciliation(owners, 0, owners)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let newly_mounted_owners = match action {
+            Action::Expanded(true) if !state.expanded => {
+                if state.show_b {
+                    4
+                } else {
+                    2
+                }
+            }
+            Action::ShowB(true) if !state.show_b && state.expanded => 2,
+            Action::Request(TreeItemRequest::Expand(id)) if id == "parent" && !state.expanded => {
+                if state.show_b {
+                    4
+                } else {
+                    2
+                }
+            }
+            _ => 0,
+        };
+        runenui_core::ProducerBudget::new(9, 0)
+            .with_reconciliation(9, 9, newly_mounted_owners)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(64, 64)
+            .with_reconciliation(9, 9, 4)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -104,7 +150,8 @@ fn fresh(expanded: bool) -> AppRuntime<App> {
         discover_a: false,
         show_b: true,
         follow_focus: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -304,6 +351,33 @@ fn collapsing_or_removing_focused_descendant_retires_exact_target_identity() {
 
 struct InvalidTreeApp;
 impl UiApp for InvalidTreeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 2)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = u8;
     type Action = u8;
     type HostProtocol = NoHostProtocol;
@@ -341,7 +415,8 @@ fn settle_invalid(runtime: &mut AppRuntime<InvalidTreeApp>) {
 
 #[test]
 fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ancestor() {
-    let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0);
+    let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     for mode in [1_u8, 2, 3] {
         runtime
             .submit_action(mode)

@@ -588,7 +588,19 @@ mod revision_tests {
                     (),
                     |()| runenui_core::text("revision fixture").into_element(),
                     RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-                );
+                    runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1),
+                    |(), _| {
+                        Ok(crate::runtime::PreparedInitialApplicationWork {
+                            application: crate::transaction::TransactionLedger::from_outputs(
+                                Vec::new(),
+                                0,
+                            )
+                            .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                            subscriptions: Vec::new(),
+                        })
+                    },
+                )
+                .unwrap_or_else(|error| unreachable!("internal test mount rejected: {error}"));
                 runtime
                     .input_ownership()
                     .unwrap_or_else(|_| unreachable!("initial projection"));

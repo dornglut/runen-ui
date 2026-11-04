@@ -6,12 +6,15 @@ use std::collections::{HashMap, HashSet};
 
 use runenui_core::{
     __runtime::{Effect, Subscription},
-    Effects, HostProtocol, WorkKey,
+    Effects, HostProtocol, ProducerBudget, WorkKey,
 };
 
 use crate::{
     MountedNodeId,
-    queue::WorkQueue,
+    queue::{
+        RootProducerCancellations, RootProducerCommit, RootProducerResponseReleases,
+        RootProducerWorkStarts, RootQuotaId, WorkQueue,
+    },
     work::{WorkFamily, WorkGeneration, WorkOwner, WorkRegistry},
 };
 
@@ -92,6 +95,36 @@ impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
     pub(crate) const fn len(&self) -> usize {
         self.outputs.len()
     }
+
+    pub(crate) fn work_start_budget(&self) -> Option<runenui_core::WorkStartBudget> {
+        let mut counts = [0usize; 5];
+        for effect in &self.outputs {
+            let index = match effect_family(effect) {
+                Some(WorkFamily::LocalTask) => Some(0),
+                Some(WorkFamily::SendTask) => Some(1),
+                Some(WorkFamily::Timer) => Some(2),
+                Some(WorkFamily::HostRequest) => Some(3),
+                Some(WorkFamily::FrameworkService) => Some(4),
+                Some(WorkFamily::Subscription) | None => None,
+            };
+            if let Some(index) = index {
+                counts[index] = counts[index].checked_add(1)?;
+            }
+        }
+        Some(runenui_core::WorkStartBudget::new(
+            counts[0], counts[1], counts[2], counts[3], counts[4],
+        ))
+    }
+
+    pub(crate) fn repeating_timer_start_count(&self) -> Option<usize> {
+        self.outputs.iter().try_fold(0usize, |count, effect| {
+            if matches!(effect, Effect::Timer(timer) if timer.__runtime_is_repeating()) {
+                count.checked_add(1)
+            } else {
+                Some(count)
+            }
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,7 +134,10 @@ pub(crate) enum PlannedWorkSemanticEvent {
 }
 
 pub(crate) enum PlannedOutput<Action> {
-    Action(Action),
+    Action {
+        action: Action,
+        producer_budget: ProducerBudget,
+    },
     Start(WorkGeneration),
     Redraw,
 }
@@ -120,6 +156,41 @@ struct PreparedApplicationTransaction<Action, Protocol: HostProtocol> {
     application_subscription_invalidated: Vec<WorkGeneration>,
     application_subscription_starts: Vec<Subscription<Action>>,
     mounted_effects: Vec<(WorkOwner, Vec<Effect<Action, Protocol>>)>,
+}
+
+fn authored_effect_family(family: WorkFamily) -> runenui_core::WorkFamily {
+    match family {
+        WorkFamily::LocalTask => runenui_core::WorkFamily::LocalTask,
+        WorkFamily::SendTask => runenui_core::WorkFamily::SendTask,
+        WorkFamily::Timer => runenui_core::WorkFamily::Timer,
+        WorkFamily::HostRequest => runenui_core::WorkFamily::HostRequest,
+        WorkFamily::FrameworkService => runenui_core::WorkFamily::FrameworkService,
+        WorkFamily::Subscription => {
+            unreachable!("subscriptions retain their concrete source family")
+        }
+    }
+}
+
+const fn subscription_start_family<Action>(
+    declaration: &Subscription<Action>,
+) -> runenui_core::WorkFamily {
+    match &declaration.source {
+        runenui_core::__runtime::SubscriptionSource::Local(_) => {
+            runenui_core::WorkFamily::LocalTask
+        }
+        runenui_core::__runtime::SubscriptionSource::Send { .. } => {
+            runenui_core::WorkFamily::SendTask
+        }
+    }
+}
+
+pub(crate) fn planned_start_family<Action, Protocol: HostProtocol>(
+    start: &PlannedOwnedStart<Action, Protocol>,
+) -> runenui_core::WorkFamily {
+    match &start.payload {
+        PlannedStartPayload::Effect(_) => authored_effect_family(start.family),
+        PlannedStartPayload::Subscription(declaration) => subscription_start_family(declaration),
+    }
 }
 
 impl<Action, Protocol: HostProtocol> PreparedApplicationTransaction<Action, Protocol> {
@@ -158,108 +229,440 @@ impl<Action, Protocol: HostProtocol> PreparedApplicationTransaction<Action, Prot
             })
             .ok_or(TransactionPlanError::WorkGenerationExhausted)
     }
+
+    fn output_count(&self) -> Result<usize, TransactionPlanError> {
+        self.mounted_effects
+            .iter()
+            .try_fold(self.application_effects.len(), |count, (_, effects)| {
+                count.checked_add(effects.len())
+            })
+            .ok_or(TransactionPlanError::ProducerQuotaExceeded)
+    }
 }
 
-impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Protocol> {
-    pub(crate) fn plan(
-        input: ApplicationTransactionInput<Action, Protocol>,
-        work: &WorkRegistry<Action, Protocol>,
-        queue: &WorkQueue<Action>,
-    ) -> Result<Self, TransactionPlanError> {
-        let prepared = PreparedApplicationTransaction::new(input);
-        let start_count = prepared.start_count()?;
-        let PreparedApplicationTransaction {
-            lifecycle_invalidated,
-            mounted_subscription_dirty,
-            application_effects,
-            application_subscription_invalidated,
-            application_subscription_starts,
-            mounted_effects,
-        } = prepared;
-        let (generations, next_generation) = work.preview_generations(start_count)?;
-        let mut generations = generations.into_iter();
-        let mut provisional = HashMap::<OwnedProvisionalKey, WorkGeneration>::new();
-        let mut invalidated_set = HashSet::new();
-        let mut invalidated = Vec::new();
-        for generation in lifecycle_invalidated {
-            insert_invalidation(generation, &mut invalidated_set, &mut invalidated);
-        }
-        let mut semantic_events = Vec::with_capacity(start_count.saturating_mul(2));
+struct PlannedOutputBatches<Action, Protocol: HostProtocol> {
+    invalidated: Vec<WorkGeneration>,
+    invalidated_set: HashSet<WorkGeneration>,
+    starts: Vec<PlannedOwnedStart<Action, Protocol>>,
+    application_outputs: Vec<PlannedOutput<Action>>,
+    application_subscription_starts: Vec<WorkGeneration>,
+    mounted_outputs: Vec<PlannedOutput<Action>>,
+    mounted_subscription_dirty: Vec<MountedNodeId>,
+    next_generation: Option<core::num::NonZeroU64>,
+    semantic_events: Vec<PlannedWorkSemanticEvent>,
+}
 
-        let mut starts = Vec::with_capacity(start_count);
-        let mut application_outputs = Vec::with_capacity(application_effects.len());
+fn plan_output_batches<State, Action, Protocol: HostProtocol>(
+    prepared: PreparedApplicationTransaction<Action, Protocol>,
+    start_count: usize,
+    work: &WorkRegistry<Action, Protocol>,
+    state: &State,
+    action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
+) -> Result<PlannedOutputBatches<Action, Protocol>, TransactionPlanError> {
+    let app = prepared
+        .application_effects
+        .iter()
+        .filter_map(effect_family)
+        .map(authored_effect_family);
+    let subscriptions = prepared
+        .application_subscription_starts
+        .iter()
+        .map(subscription_start_family);
+    let mounted = prepared
+        .mounted_effects
+        .iter()
+        .flat_map(|(_, effects)| effects.iter())
+        .filter_map(effect_family)
+        .map(authored_effect_family);
+    work.preflight_application_turn_starts(app.chain(subscriptions).chain(mounted))
+        .map_err(TransactionPlanError::ProducerViolation)?;
+    let PreparedApplicationTransaction {
+        lifecycle_invalidated,
+        mounted_subscription_dirty,
+        application_effects,
+        application_subscription_invalidated,
+        application_subscription_starts,
+        mounted_effects,
+    } = prepared;
+    let (generations, next_generation) = work.preview_generations(start_count)?;
+    let mut generations = generations.into_iter();
+    let mut provisional = HashMap::<OwnedProvisionalKey, WorkGeneration>::new();
+    let mut invalidated_set = HashSet::new();
+    let mut invalidated = Vec::new();
+    for generation in lifecycle_invalidated {
+        insert_invalidation(generation, &mut invalidated_set, &mut invalidated);
+    }
+    let mut semantic_events = Vec::with_capacity(start_count.saturating_mul(2));
+
+    let mut starts = Vec::with_capacity(start_count);
+    let mut application_outputs = Vec::with_capacity(application_effects.len());
+    plan_owned_effects(
+        &WorkOwner::Application,
+        application_effects,
+        &mut generations,
+        work,
+        &mut provisional,
+        &mut invalidated_set,
+        &mut invalidated,
+        &mut starts,
+        &mut application_outputs,
+        &mut semantic_events,
+        state,
+        action_budgeter,
+    );
+
+    for generation in application_subscription_invalidated {
+        if insert_invalidation(generation, &mut invalidated_set, &mut invalidated) {
+            semantic_events.push(PlannedWorkSemanticEvent::Invalidated(generation));
+        }
+    }
+
+    let application_subscription_starts = plan_application_subscription_starts(
+        application_subscription_starts,
+        &mut generations,
+        &mut provisional,
+        &mut starts,
+        &mut semantic_events,
+    );
+
+    let mounted_output_capacity = mounted_effects
+        .iter()
+        .map(|(_, effects)| effects.len())
+        .sum();
+    let mut mounted_outputs = Vec::with_capacity(mounted_output_capacity);
+    for (owner, effects) in mounted_effects {
         plan_owned_effects(
-            &WorkOwner::Application,
-            application_effects,
+            &owner,
+            effects,
             &mut generations,
             work,
             &mut provisional,
             &mut invalidated_set,
             &mut invalidated,
             &mut starts,
-            &mut application_outputs,
+            &mut mounted_outputs,
             &mut semantic_events,
+            state,
+            action_budgeter,
         );
+    }
 
-        for generation in application_subscription_invalidated {
-            if insert_invalidation(generation, &mut invalidated_set, &mut invalidated) {
-                semantic_events.push(PlannedWorkSemanticEvent::Invalidated(generation));
+    Ok(PlannedOutputBatches {
+        invalidated,
+        invalidated_set,
+        starts,
+        application_outputs,
+        application_subscription_starts,
+        mounted_outputs,
+        mounted_subscription_dirty,
+        next_generation,
+        semantic_events,
+    })
+}
+
+struct RootProducerPreflight<'a, Action, Protocol: HostProtocol> {
+    queue: &'a WorkQueue<Action>,
+    root_quota: RootQuotaId,
+    starts: &'a [PlannedOwnedStart<Action, Protocol>],
+    invalidated: &'a [WorkGeneration],
+    invalidated_set: &'a HashSet<WorkGeneration>,
+    sequenced_outputs: usize,
+    application_outputs: &'a [PlannedOutput<Action>],
+    mounted_outputs: &'a [PlannedOutput<Action>],
+    phase: runenui_core::ProducerPhase,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct TransactionProducerContext {
+    pub(crate) root_quota: Option<RootQuotaId>,
+    pub(crate) producer_budget: Option<ProducerBudget>,
+    pub(crate) phase: runenui_core::ProducerPhase,
+}
+
+fn root_work_start_counts(
+    starts: impl Iterator<Item = (WorkGeneration, WorkFamily, bool)> + Clone,
+    invalidated: &HashSet<WorkGeneration>,
+) -> (usize, RootProducerWorkStarts) {
+    let live = starts.filter(|(generation, _, _)| !invalidated.contains(generation));
+    let count_family = |family| live.clone().filter(|(_, kind, _)| *kind == family).count();
+    (
+        live.clone().count(),
+        RootProducerWorkStarts {
+            host_requests: count_family(WorkFamily::HostRequest),
+            local_tasks: count_family(WorkFamily::LocalTask),
+            send_tasks: count_family(WorkFamily::SendTask),
+            timers: count_family(WorkFamily::Timer),
+            repeating_timers: live
+                .clone()
+                .filter(|(_, kind, repeating)| *kind == WorkFamily::Timer && *repeating)
+                .count(),
+            framework_services: count_family(WorkFamily::FrameworkService),
+        },
+    )
+}
+
+fn root_work_cancellations<Action>(
+    queue: &WorkQueue<Action>,
+    root_quota: RootQuotaId,
+    invalidated: &[WorkGeneration],
+) -> Result<(RootProducerCancellations, RootProducerResponseReleases), TransactionPlanError> {
+    queue
+        .preflight_root_cancellations(invalidated, root_quota)
+        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)
+}
+
+fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(
+    preflight: &RootProducerPreflight<'_, Action, Protocol>,
+) -> Result<(), TransactionPlanError> {
+    let queue = preflight.queue;
+    let root_quota = preflight.root_quota;
+    let starts = preflight.starts;
+    let invalidated = preflight.invalidated;
+    let invalidated_set = preflight.invalidated_set;
+    let sequenced_outputs = preflight.sequenced_outputs;
+    let application_outputs = preflight.application_outputs;
+    let mounted_outputs = preflight.mounted_outputs;
+    let (live_start_count, starts) = root_work_start_counts(starts.iter().map(|start| (start.generation,start.family,matches!(&start.payload,PlannedStartPayload::Effect(Effect::Timer(timer)) if timer.__runtime_is_repeating()))), invalidated_set);
+    let (cancellations, response_releases) =
+        root_work_cancellations(queue, root_quota, invalidated)?;
+    let root_commit = RootProducerCommit {
+        root: root_quota,
+        queued_envelopes: sequenced_outputs,
+        starts,
+        cancellations,
+        response_releases,
+    };
+    if let Err(error) = queue.preflight_root_producer_commit(root_commit) {
+        return Err(match error {
+            crate::queue::RootProducerCommitError::FrontierInsufficient {
+                declared,
+                attempted,
+            } => root_frontier_violation(preflight.phase, declared, attempted),
+            crate::queue::RootProducerCommitError::Reservation(_) => {
+                TransactionPlanError::ProducerQuotaExceeded
+            }
+        });
+    }
+    queue
+        .preflight_root_work_leases(root_quota, live_start_count)
+        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
+    for producer_budget in application_outputs
+        .iter()
+        .chain(mounted_outputs)
+        .filter_map(|output| match output {
+            PlannedOutput::Action {
+                producer_budget, ..
+            } => Some(*producer_budget),
+            PlannedOutput::Start(_) | PlannedOutput::Redraw => None,
+        })
+    {
+        if !queue.root_covers_action_budget(root_quota, producer_budget) {
+            if let Some(parent) = queue.root_profile(root_quota)
+                && let Some((component, declared, attempted)) =
+                    uncovered_component(parent, producer_budget)
+            {
+                return Err(TransactionPlanError::ProducerViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: preflight.phase,
+                        component,
+                        declared,
+                        attempted: Some(attempted),
+                    },
+                ));
+            }
+            return Err(TransactionPlanError::ProducerQuotaExceeded);
+        }
+    }
+    Ok(())
+}
+
+const fn root_frontier_violation(
+    phase: runenui_core::ProducerPhase,
+    declared: usize,
+    attempted: Option<usize>,
+) -> TransactionPlanError {
+    TransactionPlanError::ProducerViolation(runenui_core::ProducerContractViolation {
+        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+        phase,
+        component: runenui_core::BudgetComponent::QueueFrontier,
+        declared,
+        attempted,
+    })
+}
+
+impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Protocol> {
+    pub(crate) fn plan<State>(
+        input: ApplicationTransactionInput<Action, Protocol>,
+        work: &WorkRegistry<Action, Protocol>,
+        queue: &WorkQueue<Action>,
+        state: &State,
+        action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
+        producer: TransactionProducerContext,
+    ) -> Result<Self, TransactionPlanError> {
+        let TransactionProducerContext {
+            root_quota,
+            producer_budget,
+            phase,
+        } = producer;
+        let prepared = PreparedApplicationTransaction::new(input);
+        let start_count = prepared.start_count()?;
+        if let Some(producer_budget) = producer_budget {
+            let output_count = prepared.output_count()?;
+            if output_count > producer_budget.outputs()
+                || prepared.application_subscription_starts.len()
+                    > producer_budget.application_subscriptions()
+                || prepared.mounted_subscription_dirty.len()
+                    > producer_budget.dirty_subscription_owners()
+            {
+                return Err(TransactionPlanError::ProducerQuotaExceeded);
             }
         }
-
-        let application_subscription_start_generations = plan_application_subscription_starts(
+        let PlannedOutputBatches {
+            invalidated,
+            invalidated_set,
+            starts,
+            application_outputs,
             application_subscription_starts,
-            &mut generations,
-            &mut provisional,
-            &mut starts,
-            &mut semantic_events,
-        );
-
-        let mounted_output_capacity = mounted_effects
-            .iter()
-            .map(|(_, effects)| effects.len())
-            .sum();
-        let mut mounted_outputs = Vec::with_capacity(mounted_output_capacity);
-        for (owner, effects) in mounted_effects {
-            plan_owned_effects(
-                &owner,
-                effects,
-                &mut generations,
-                work,
-                &mut provisional,
-                &mut invalidated_set,
-                &mut invalidated,
-                &mut starts,
-                &mut mounted_outputs,
-                &mut semantic_events,
-            );
-        }
+            mounted_outputs,
+            mounted_subscription_dirty,
+            next_generation,
+            semantic_events,
+        } = plan_output_batches(prepared, start_count, work, state, action_budgeter)?;
 
         let sequenced_outputs = application_outputs
             .iter()
             .chain(&mounted_outputs)
             .filter(|output| !matches!(output, PlannedOutput::Redraw))
             .count()
-            .checked_add(application_subscription_start_generations.len())
+            .checked_add(application_subscription_starts.len())
             .and_then(|count| count.checked_add(invalidated.len()))
             .and_then(|count| count.checked_add(mounted_subscription_dirty.len()))
             .ok_or(TransactionPlanError::QueueFull)?;
-        queue.preflight_commit(sequenced_outputs)?;
-        work.preflight_planned_families(
+        if let Some(producer_budget) = producer_budget {
+            let start_budget = producer_budget.work_starts();
+            preflight_unrooted_queue_budget(root_quota, sequenced_outputs, producer_budget)?;
+            let start_exceeds = [
+                (WorkFamily::LocalTask, runenui_core::WorkFamily::LocalTask),
+                (WorkFamily::SendTask, runenui_core::WorkFamily::SendTask),
+                (WorkFamily::Timer, runenui_core::WorkFamily::Timer),
+                (
+                    WorkFamily::HostRequest,
+                    runenui_core::WorkFamily::HostRequest,
+                ),
+                (
+                    WorkFamily::FrameworkService,
+                    runenui_core::WorkFamily::FrameworkService,
+                ),
+            ]
+            .into_iter()
+            .any(|(runtime_family, authored_family)| {
+                starts
+                    .iter()
+                    .filter(|start| start.family == runtime_family)
+                    .count()
+                    > start_budget.for_family(authored_family)
+            });
+            if start_exceeds {
+                return Err(TransactionPlanError::ProducerQuotaExceeded);
+            }
+        }
+        if let Some(root_quota) = root_quota {
+            preflight_root_producer_commit(&RootProducerPreflight {
+                queue,
+                root_quota,
+                starts: &starts,
+                invalidated: &invalidated,
+                invalidated_set: &invalidated_set,
+                sequenced_outputs,
+                application_outputs: &application_outputs,
+                mounted_outputs: &mounted_outputs,
+                phase,
+            })?;
+        } else {
+            queue.preflight_commit(sequenced_outputs)?;
+        }
+        preflight_transaction_families(
+            work,
             &invalidated_set,
             &starts.iter().map(|start| (start.generation, start.family)),
+            queue,
+            root_quota,
+            phase,
         )?;
         Ok(Self {
             invalidated,
             starts,
             application_outputs,
-            application_subscription_starts: application_subscription_start_generations,
+            application_subscription_starts,
             mounted_outputs,
             mounted_subscription_dirty,
             next_generation,
             semantic_events,
         })
     }
+}
+
+fn preflight_transaction_families<Action, Protocol: HostProtocol>(
+    work: &WorkRegistry<Action, Protocol>,
+    invalidated: &HashSet<WorkGeneration>,
+    starts: &(impl Iterator<Item = (WorkGeneration, WorkFamily)> + Clone),
+    queue: &WorkQueue<Action>,
+    root: Option<RootQuotaId>,
+    phase: runenui_core::ProducerPhase,
+) -> Result<(), TransactionPlanError> {
+    if let Err(error) = work.preflight_planned_families(invalidated, starts, queue, root) {
+        if let crate::work::RegistryInsertError::RootResidencyExceeded {
+            family,
+            declared,
+            attempted,
+        } = error
+        {
+            return Err(root_residency_violation(phase, family, declared, attempted));
+        }
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+const fn preflight_unrooted_queue_budget(
+    root: Option<RootQuotaId>,
+    sequenced_outputs: usize,
+    budget: ProducerBudget,
+) -> Result<(), TransactionPlanError> {
+    if root.is_none() && sequenced_outputs > budget.queue_credits() {
+        return Err(TransactionPlanError::ProducerQuotaExceeded);
+    }
+    Ok(())
+}
+
+const fn root_residency_violation(
+    phase: runenui_core::ProducerPhase,
+    family: WorkFamily,
+    declared: usize,
+    attempted: usize,
+) -> TransactionPlanError {
+    use runenui_core::{
+        BudgetComponent as B, ProducerContractViolation as V, ProducerViolationKind,
+    };
+
+    let component = match family {
+        WorkFamily::Subscription => B::SubscriptionResidency,
+        WorkFamily::LocalTask => B::WorkResidency(runenui_core::WorkFamily::LocalTask),
+        WorkFamily::SendTask => B::WorkResidency(runenui_core::WorkFamily::SendTask),
+        WorkFamily::Timer => B::WorkResidency(runenui_core::WorkFamily::Timer),
+        WorkFamily::HostRequest => B::WorkResidency(runenui_core::WorkFamily::HostRequest),
+        WorkFamily::FrameworkService => {
+            B::WorkResidency(runenui_core::WorkFamily::FrameworkService)
+        }
+    };
+    TransactionPlanError::ProducerViolation(V {
+        kind: ProducerViolationKind::DeclarationExceeded,
+        phase,
+        component,
+        declared,
+        attempted: Some(attempted),
+    })
 }
 
 fn plan_application_subscription_starts<Action, Protocol: HostProtocol>(
@@ -297,7 +700,7 @@ fn plan_application_subscription_starts<Action, Protocol: HostProtocol>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn plan_owned_effects<Action, Protocol: HostProtocol>(
+fn plan_owned_effects<State, Action, Protocol: HostProtocol>(
     owner: &WorkOwner,
     effects: Vec<Effect<Action, Protocol>>,
     generations: &mut impl Iterator<Item = WorkGeneration>,
@@ -308,6 +711,8 @@ fn plan_owned_effects<Action, Protocol: HostProtocol>(
     starts: &mut Vec<PlannedOwnedStart<Action, Protocol>>,
     outputs: &mut Vec<PlannedOutput<Action>>,
     semantic_events: &mut Vec<PlannedWorkSemanticEvent>,
+    state: &State,
+    action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
 ) {
     for effect in effects {
         if let Effect::Cancel { family, key } = effect {
@@ -329,7 +734,14 @@ fn plan_owned_effects<Action, Protocol: HostProtocol>(
             continue;
         }
         if let Effect::Action(action) = effect {
-            outputs.push(PlannedOutput::Action(action));
+            let producer_budget = action_budgeter.map_or_else(
+                || ProducerBudget::new(1, 0),
+                |profile| profile(state, &action),
+            );
+            outputs.push(PlannedOutput::Action {
+                action,
+                producer_budget,
+            });
             continue;
         }
         if matches!(effect, Effect::Redraw) {
@@ -419,7 +831,9 @@ pub(crate) enum TransactionOutputError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TransactionPlanError {
+    ProducerViolation(runenui_core::ProducerContractViolation),
     QueueFull,
+    ProducerQuotaExceeded,
     WorkSequenceExhausted,
     RegistryFull,
     WorkGenerationExhausted,
@@ -437,8 +851,461 @@ impl From<crate::queue::QueueCommitError> for TransactionPlanError {
 impl From<crate::work::RegistryInsertError> for TransactionPlanError {
     fn from(error: crate::work::RegistryInsertError) -> Self {
         match error {
-            crate::work::RegistryInsertError::Full => Self::RegistryFull,
+            crate::work::RegistryInsertError::Full
+            | crate::work::RegistryInsertError::RootResidencyExceeded { .. } => Self::RegistryFull,
             crate::work::RegistryInsertError::GenerationExhausted => Self::WorkGenerationExhausted,
         }
     }
+}
+
+/// Immutable authority borrowed by the pre-mutation returned-effects pass.
+pub(crate) struct ReturnedEffectsPreflight<'a, State, Action, Protocol: HostProtocol> {
+    pub(crate) budget: ProducerBudget,
+    pub(crate) phase: runenui_core::ProducerPhase,
+    pub(crate) work: &'a WorkRegistry<Action, Protocol>,
+    pub(crate) queue: &'a WorkQueue<Action>,
+    pub(crate) root: Option<RootQuotaId>,
+    pub(crate) state: &'a State,
+    pub(crate) action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
+}
+
+struct ReturnedWorkDemand {
+    invalidated: HashSet<WorkGeneration>,
+    starts: Vec<(WorkGeneration, WorkFamily, bool)>,
+}
+
+impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
+    /// Pure demand pass over the entire owned return value. Neither registries,
+    /// canonical sequences nor external work are mutated here.
+    pub(crate) fn validate_returned<State>(
+        &self,
+        context: &ReturnedEffectsPreflight<'_, State, Action, Protocol>,
+    ) -> Result<(), crate::RuntimeTerminalReason> {
+        use runenui_core::{BudgetComponent, ProducerContractViolation, ProducerViolationKind};
+        let budget = context.budget;
+        let phase = context.phase;
+        let work = context.work;
+        let queue = context.queue;
+        let root = context.root;
+        let exceeded = |component, declared, attempted| {
+            crate::RuntimeTerminalReason::ProducerContractViolation(ProducerContractViolation {
+                kind: ProducerViolationKind::DeclarationExceeded,
+                phase,
+                component,
+                declared,
+                attempted: Some(attempted),
+            })
+        };
+        if self.len() > budget.application_outputs() {
+            return Err(exceeded(
+                BudgetComponent::ApplicationOutputs,
+                budget.application_outputs(),
+                self.len(),
+            ));
+        }
+        let counts = self
+            .work_start_budget()
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+        for family in [
+            runenui_core::WorkFamily::LocalTask,
+            runenui_core::WorkFamily::SendTask,
+            runenui_core::WorkFamily::Timer,
+            runenui_core::WorkFamily::HostRequest,
+            runenui_core::WorkFamily::FrameworkService,
+        ] {
+            if counts.for_family(family) > budget.work_starts().for_family(family) {
+                return Err(exceeded(
+                    BudgetComponent::WorkStarts(family),
+                    budget.work_starts().for_family(family),
+                    counts.for_family(family),
+                ));
+            }
+        }
+        let ReturnedWorkDemand {
+            invalidated,
+            starts,
+        } = self.preview_returned_work(context)?;
+        for (family, authored) in [
+            (WorkFamily::LocalTask, runenui_core::WorkFamily::LocalTask),
+            (WorkFamily::SendTask, runenui_core::WorkFamily::SendTask),
+            (WorkFamily::Timer, runenui_core::WorkFamily::Timer),
+            (
+                WorkFamily::HostRequest,
+                runenui_core::WorkFamily::HostRequest,
+            ),
+            (
+                WorkFamily::FrameworkService,
+                runenui_core::WorkFamily::FrameworkService,
+            ),
+        ] {
+            let added = starts
+                .iter()
+                .filter(|(generation, kind, _)| {
+                    *kind == family && !invalidated.contains(generation)
+                })
+                .count();
+            let required = work
+                .resident_family_requirement(family, &invalidated, added, root)
+                .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+            let declared = root
+                .and_then(|id| queue.root_work_residency(id, family))
+                .unwrap_or_else(|| budget.work_residency().for_family(authored));
+            if required > declared {
+                return Err(exceeded(
+                    BudgetComponent::WorkResidency(authored),
+                    declared,
+                    required,
+                ));
+            }
+        }
+        work.preflight_planned_families(
+            &invalidated,
+            &starts
+                .iter()
+                .map(|(generation, family, _)| (*generation, *family)),
+            queue,
+            root,
+        )
+        .map_err(|_| crate::RuntimeTerminalReason::Poisoned)?;
+        self.preflight_returned_queue(context, &invalidated, &starts)
+    }
+
+    fn preflight_returned_queue<State>(
+        &self,
+        context: &ReturnedEffectsPreflight<'_, State, Action, Protocol>,
+        invalidated: &HashSet<WorkGeneration>,
+        starts: &[(WorkGeneration, WorkFamily, bool)],
+    ) -> Result<(), crate::RuntimeTerminalReason> {
+        let Some(root) = context.root else {
+            return Ok(());
+        };
+        let (live_start_count, starts) =
+            root_work_start_counts(starts.iter().copied(), invalidated);
+        let mut invalidated = invalidated.iter().copied().collect::<Vec<_>>();
+        invalidated.sort_unstable();
+        let sequenced = self
+            .outputs
+            .iter()
+            .filter(|effect| !matches!(effect, Effect::Cancel { .. } | Effect::Redraw))
+            .count()
+            .checked_add(invalidated.len())
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+        if sequenced > context.budget.queue_credits() {
+            return Err(crate::RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: context.phase,
+                    component: runenui_core::BudgetComponent::QueueFrontier,
+                    declared: context.budget.queue_credits(),
+                    attempted: Some(sequenced),
+                },
+            ));
+        }
+        let (cancellations, response_releases) =
+            root_work_cancellations(context.queue, root, &invalidated)
+                .map_err(|_| crate::RuntimeTerminalReason::Poisoned)?;
+        context
+            .queue
+            .preflight_root_producer_commit(RootProducerCommit {
+                root,
+                queued_envelopes: sequenced,
+                starts,
+                cancellations,
+                response_releases,
+            })
+            .map_err(|error| match error {
+                crate::queue::RootProducerCommitError::Reservation(
+                    crate::queue::QueueReservationError::SequenceExhausted,
+                ) => crate::RuntimeTerminalReason::WorkSequenceExhausted,
+                crate::queue::RootProducerCommitError::FrontierInsufficient {
+                    declared,
+                    attempted,
+                } => crate::RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: context.phase,
+                        component: runenui_core::BudgetComponent::QueueFrontier,
+                        declared,
+                        attempted,
+                    },
+                ),
+                crate::queue::RootProducerCommitError::Reservation(_) => {
+                    crate::RuntimeTerminalReason::Poisoned
+                }
+            })?;
+        context
+            .queue
+            .preflight_root_work_leases(root, live_start_count)
+            .map_err(|_| crate::RuntimeTerminalReason::Poisoned)
+    }
+
+    fn preview_returned_work<State>(
+        &self,
+        context: &ReturnedEffectsPreflight<'_, State, Action, Protocol>,
+    ) -> Result<ReturnedWorkDemand, crate::RuntimeTerminalReason> {
+        use runenui_core::{ProducerContractViolation, ProducerViolationKind};
+        let ReturnedEffectsPreflight {
+            budget,
+            phase,
+            work,
+            queue,
+            root,
+            state,
+            action_budgeter,
+        } = *context;
+        // Use real previewed generation identities and the same key/family rules
+        // as final planning. Later provisional replacements never resurrect an
+        // invalidated predecessor, and cancelled starts consume no residency.
+        let count = self
+            .work_start_budget()
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?
+            .total()
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+        let (generations, _) = work
+            .preview_generations(count)
+            .map_err(|_| crate::RuntimeTerminalReason::WorkGenerationExhausted)?;
+        let mut generations = generations.into_iter();
+        let mut provisional = HashMap::new();
+        let mut invalidated = HashSet::new();
+        let mut starts = Vec::with_capacity(count);
+        for effect in &self.outputs {
+            if let Effect::Action(action) = effect
+                && let Some(budgeter) = action_budgeter
+            {
+                let child = budgeter(state, action);
+                let parent = match root {
+                    Some(root) => queue
+                        .root_profile(root)
+                        .ok_or(crate::RuntimeTerminalReason::Poisoned)?,
+                    None => budget,
+                };
+                if let Some((component, declared, attempted)) = uncovered_component(parent, child) {
+                    return Err(crate::RuntimeTerminalReason::ProducerContractViolation(
+                        ProducerContractViolation {
+                            kind: ProducerViolationKind::DescendantProfileNotCovered,
+                            phase,
+                            component,
+                            declared,
+                            attempted: Some(attempted),
+                        },
+                    ));
+                }
+            }
+            if let Effect::Cancel { family, key } = effect {
+                let identity = OwnedProvisionalKey {
+                    owner: WorkOwner::Application,
+                    family: (*family).into(),
+                    key: key.clone(),
+                };
+                if let Some(target) = provisional
+                    .get(&identity)
+                    .copied()
+                    .or_else(|| work.current(&identity.owner, identity.family, &identity.key))
+                {
+                    invalidated.insert(target);
+                }
+                continue;
+            }
+            let Some(family) = effect_family(effect) else {
+                continue;
+            };
+            let generation = generations
+                .next()
+                .unwrap_or_else(|| unreachable!("counts and effects agree"));
+            if let Some(key) = effect_key(effect) {
+                let identity = OwnedProvisionalKey {
+                    owner: WorkOwner::Application,
+                    family,
+                    key: key.clone(),
+                };
+                if let Some(old) = provisional
+                    .insert(identity.clone(), generation)
+                    .or_else(|| work.current(&identity.owner, family, key))
+                {
+                    invalidated.insert(old);
+                }
+            }
+            starts.push((
+                generation,
+                family,
+                matches!(effect,Effect::Timer(timer) if timer.__runtime_is_repeating()),
+            ));
+        }
+        Ok(ReturnedWorkDemand {
+            invalidated,
+            starts,
+        })
+    }
+}
+
+/// Returns uncharged per-family credits after a complete provisional group.
+/// No partial family charge is made on error.
+pub(crate) fn remaining_work_starts(
+    promised: runenui_core::WorkStartBudget,
+    used: runenui_core::WorkStartBudget,
+    phase: runenui_core::ProducerPhase,
+) -> Result<runenui_core::WorkStartBudget, runenui_core::ProducerContractViolation> {
+    let mut remaining = [0; 5];
+    for (index, family) in [
+        runenui_core::WorkFamily::LocalTask,
+        runenui_core::WorkFamily::SendTask,
+        runenui_core::WorkFamily::Timer,
+        runenui_core::WorkFamily::HostRequest,
+        runenui_core::WorkFamily::FrameworkService,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        remaining[index] = promised
+            .for_family(family)
+            .checked_sub(used.for_family(family))
+            .ok_or_else(|| runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                phase,
+                component: runenui_core::BudgetComponent::WorkStarts(family),
+                declared: promised.for_family(family),
+                attempted: Some(used.for_family(family)),
+            })?;
+    }
+    Ok(runenui_core::WorkStartBudget::new(
+        remaining[0],
+        remaining[1],
+        remaining[2],
+        remaining[3],
+        remaining[4],
+    ))
+}
+
+pub(crate) fn uncovered_component(
+    parent: ProducerBudget,
+    child: ProducerBudget,
+) -> Option<(runenui_core::BudgetComponent, usize, usize)> {
+    use runenui_core::BudgetComponent as B;
+    for (component, declared, attempted) in [
+        (
+            B::QueueFrontier,
+            parent.queue_credits(),
+            child.queue_credits(),
+        ),
+        (B::Outputs, parent.outputs(), child.outputs()),
+        (
+            B::ApplicationOutputs,
+            parent.application_outputs(),
+            child.application_outputs(),
+        ),
+        (
+            B::MountedNodes,
+            parent.mounted_nodes(),
+            child.mounted_nodes(),
+        ),
+        (
+            B::RetainedUpdates,
+            parent.retained_updates(),
+            child.retained_updates(),
+        ),
+        (
+            B::DirtySubscriptionOwners,
+            parent.dirty_subscription_owners(),
+            child.dirty_subscription_owners(),
+        ),
+        (
+            B::ApplicationSubscriptions,
+            parent.application_subscriptions(),
+            child.application_subscriptions(),
+        ),
+        (
+            B::MountedSubscriptionsPerOwner,
+            parent.mounted_subscriptions_per_owner(),
+            child.mounted_subscriptions_per_owner(),
+        ),
+        (
+            B::SubscriptionResidency,
+            parent.work_residency().subscriptions(),
+            child.work_residency().subscriptions(),
+        ),
+    ] {
+        if attempted > declared {
+            return Some((component, declared, attempted));
+        }
+    }
+    for family in [
+        runenui_core::WorkFamily::LocalTask,
+        runenui_core::WorkFamily::SendTask,
+        runenui_core::WorkFamily::Timer,
+        runenui_core::WorkFamily::HostRequest,
+        runenui_core::WorkFamily::FrameworkService,
+    ] {
+        for (component, declared, attempted) in [
+            (
+                B::WorkStarts(family),
+                parent.work_starts().for_family(family),
+                child.work_starts().for_family(family),
+            ),
+            (
+                B::WorkResidency(family),
+                parent.work_residency().for_family(family),
+                child.work_residency().for_family(family),
+            ),
+        ] {
+            if attempted > declared {
+                return Some((component, declared, attempted));
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn validate_application_family_starts<'a, Action: 'a, Protocol: HostProtocol + 'a>(
+    promised: runenui_core::WorkStartBudget,
+    ledgers: impl Iterator<Item = &'a TransactionLedger<Action, Protocol>>,
+    subscriptions: &[Subscription<Action>],
+) -> Result<(), crate::RuntimeTerminalReason> {
+    let families = [
+        runenui_core::WorkFamily::LocalTask,
+        runenui_core::WorkFamily::SendTask,
+        runenui_core::WorkFamily::Timer,
+        runenui_core::WorkFamily::HostRequest,
+        runenui_core::WorkFamily::FrameworkService,
+    ];
+    let mut counts = [0usize; 5];
+    for ledger in ledgers {
+        let used = ledger
+            .work_start_budget()
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+        for (index, family) in families.into_iter().enumerate() {
+            counts[index] = counts[index]
+                .checked_add(used.for_family(family))
+                .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+        }
+    }
+    let check = |counts: &[usize; 5], phase| {
+        for (index, family) in families.into_iter().enumerate() {
+            if counts[index] > promised.for_family(family) {
+                return Err(crate::RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase,
+                        component: runenui_core::BudgetComponent::WorkStarts(family),
+                        declared: promised.for_family(family),
+                        attempted: Some(counts[index]),
+                    },
+                ));
+            }
+        }
+        Ok(())
+    };
+    check(&counts, runenui_core::ProducerPhase::ApplicationUpdate)?;
+    for source in subscriptions {
+        let index = usize::from(matches!(
+            source.source,
+            runenui_core::__runtime::SubscriptionSource::Send { .. }
+        ));
+        counts[index] = counts[index]
+            .checked_add(1)
+            .ok_or(crate::RuntimeTerminalReason::Poisoned)?;
+    }
+    check(
+        &counts,
+        runenui_core::ProducerPhase::ApplicationSubscriptions,
+    )
 }

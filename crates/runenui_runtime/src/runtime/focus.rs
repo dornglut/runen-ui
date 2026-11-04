@@ -26,6 +26,7 @@ pub(crate) struct InputLifetimeCleanupCause {
     pub causal_parent: Option<TraceSequence>,
     pub instant: MonotonicInstant,
     pub origin: CommandOrigin,
+    root_quota: Option<crate::queue::RootQuotaId>,
 }
 
 impl InputLifetimeCleanupCause {
@@ -40,7 +41,15 @@ impl InputLifetimeCleanupCause {
             causal_parent,
             instant,
             origin,
+            root_quota: None,
         }
+    }
+
+    pub(crate) const fn with_root_quota(mut self, root: crate::queue::RootQuotaId) -> Self {
+        // Cleanup caused by a funded producer spends that same frontier;
+        // it must not compete with already admitted roots for ordinary slots.
+        self.root_quota = Some(root);
+        self
     }
 
     pub(crate) const fn with_failure_lineage(self, failure: RoutedFailureLineage) -> Self {
@@ -55,6 +64,8 @@ impl InputLifetimeCleanupCause {
 }
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
+    pub committed_route: Vec<MountedNodeId>,
+    pub root_quota: crate::queue::RootQuotaId,
     pub old_route: Vec<TraceTarget>,
     pub reason: FocusReason,
     pub sequence: WorkSequence,
@@ -249,7 +260,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ) else {
             return Ok(cause.causal_parent);
         };
-        let facts = super::RoutedIngressFacts::new(
+        let mut facts = super::RoutedIngressFacts::new(
             start_sequence,
             owner.clone(),
             cause.origin,
@@ -258,6 +269,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             cause.causal_parent,
             TraceReservation::continuation(),
         );
+        // Synchronous scope cleanup has no causing queued action. Its exact
+        // composition still owns the original frontier, even when a terminal
+        // attempt is queued and has temporarily claimed the ingress guard.
+        let root = cause.root_quota.or_else(|| {
+            self.composition.generation().and_then(|generation| {
+                self.queue.input_continuation_root(
+                    &crate::queue::InputContinuationKey::Composition(generation.clone()),
+                )
+            })
+        });
+        if let Some(root) = root {
+            facts = facts.with_root_quota(root);
+        }
         let mut transaction = self.try_begin_routed_transaction_with_trace(
             facts,
             MandatoryTracePlan::composition_cleanup(),
@@ -271,12 +295,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let cleanup_parent = transaction.parent;
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            let lineage = self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                Some(&owner),
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            let lineage =
+                self.poison_routed_event(&failure_facts, error.integrity_failure(), Some(&owner));
             return Err(lineage);
         }
         Ok(cleanup_parent)
@@ -718,10 +739,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.cancel_composition_in_transaction(
                 transaction,
                 old,
-                runenui_core::CompositionCancelReason::FocusTransfer,
+                if reason == FocusReason::Disablement {
+                    CompositionCancelReason::Disablement
+                } else {
+                    CompositionCancelReason::FocusTransfer
+                },
             )?;
         }
-        self.revoke_space_for_focus_transfer(transaction, old_target.as_ref());
+        self.revoke_space_for_focus_transition(transaction, old_target.as_ref(), reason);
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?
@@ -808,10 +833,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    fn revoke_space_for_focus_transfer(
+    fn revoke_space_for_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         old_target: Option<&MountedNodeId>,
+        reason: FocusReason,
     ) {
         if self
             .space_ownership
@@ -819,7 +845,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .is_some_and(|owner| old_target == Some(&owner.target))
         {
             transaction.parent = self.revoke_space_ownership_with_cause(
-                TraceSpaceCleanupReason::FocusTransfer,
+                if reason == FocusReason::Disablement {
+                    TraceSpaceCleanupReason::Disablement
+                } else {
+                    TraceSpaceCleanupReason::FocusTransfer
+                },
                 InputLifetimeCleanupCause::new(
                     Some(transaction.sequence),
                     transaction.parent,
@@ -1008,6 +1038,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         cleanup: ReconciledFocusCleanup,
     ) {
+        if cleanup.reason == FocusReason::Disablement
+            && let Some(target) = self.focus.focused_node().cloned()
+            && self
+                .tree
+                .event_route(&target)
+                .is_ok_and(|route| route == cleanup.committed_route)
+        {
+            if let Err(failure) = self.commit_live_reconciled_focus_cleanup(&cleanup, &target)
+                && matches!(self.status, RuntimeStatus::Running)
+            {
+                self.enter_terminal_with_parent(
+                    crate::RuntimeTerminalReason::Poisoned,
+                    0,
+                    failure.causal_parent(),
+                );
+            }
+            return;
+        }
         let ReconciledFocusCleanup {
             old_route,
             reason,
@@ -1018,6 +1066,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             after,
             trace_target,
             surface,
+            ..
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
         self.focus.commit(None, Vec::new(), reason, false);
@@ -1085,6 +1134,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .with_reconciliation(Some(before), Some(after))
             .with_target(Some(trace_target)),
         );
+    }
+
+    fn commit_live_reconciled_focus_cleanup(
+        &mut self,
+        cleanup: &ReconciledFocusCleanup,
+        target: &MountedNodeId,
+    ) -> Result<(), RoutedFailureLineage> {
+        let composition_active = self.composition.owner() == Some(target);
+        let facts = super::RoutedIngressFacts::new(
+            cleanup.sequence,
+            target.clone(),
+            CommandOrigin::programmatic(),
+            cleanup.instant,
+            TraceEventContext::new(TraceEventFamily::Focus, false),
+            cleanup.causal_parent,
+            TraceReservation::continuation(),
+        )
+        .with_root_quota(cleanup.root_quota);
+        let mut transaction =
+            self.try_begin_reconciled_focus_transaction(facts, composition_active)?;
+        if let Err(failure) = self.commit_focus_transition(&mut transaction, None, cleanup.reason) {
+            let current = transaction.failure_current_target.clone();
+            return Err(self.poison_transaction(&transaction, failure, current.as_ref()));
+        }
+        let failure_facts = transaction.failure_facts();
+        self.commit_routed_transaction(transaction)
+            .map_err(|error| {
+                self.poison_routed_event(&failure_facts, error.integrity_failure(), Some(target))
+            })
     }
 
     pub(in crate::runtime) fn clear_focus_for_shutdown(

@@ -1,7 +1,7 @@
 use super::super::{TouchGestureState, TouchTextSelectionCandidate};
+use super::super::{button_transition_is_valid, touch_transition_is_supported};
 use runenui_core::{
-    HostProtocol, OverflowPolicy, PointerButton, PointerButtons, PointerEvent, PointerPhase,
-    TextDisplayPosition, TextSelection,
+    HostProtocol, OverflowPolicy, PointerEvent, PointerPhase, TextDisplayPosition, TextSelection,
 };
 
 use super::{
@@ -44,7 +44,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         };
         if work.event.device_kind() == runenui_core::PointerDeviceKind::Touch
-            && !touch_transition_is_supported(&work.event, existing.as_ref())
+            && !touch_transition_is_supported(&work.event, existing.is_some())
         {
             return Err(self.reject_pointer_preparation(
                 work,
@@ -653,76 +653,6 @@ fn pointer_button_transition_is_valid(
         event.buttons(),
         existing.map(PointerStreamState::buttons),
     )
-}
-
-fn touch_transition_is_supported(
-    event: &PointerEvent,
-    existing: Option<&PointerStreamState>,
-) -> bool {
-    let primary = runenui_core::PointerButton::Primary;
-    match event.phase() {
-        PointerPhase::Down => {
-            existing.is_none()
-                && event.changed_button() == Some(primary)
-                && event.buttons().iter().eq([primary])
-        }
-        PointerPhase::Move => {
-            existing.is_some()
-                && event.changed_button().is_none()
-                && event.buttons().iter().eq([primary])
-        }
-        PointerPhase::Up => {
-            existing.is_some()
-                && event.changed_button() == Some(primary)
-                && event.buttons().is_empty()
-        }
-        PointerPhase::Cancel => existing.is_some(),
-        _ => false,
-    }
-}
-
-fn button_transition_is_valid(
-    phase: PointerPhase,
-    changed_button: Option<PointerButton>,
-    buttons: &PointerButtons,
-    previous_buttons: Option<&PointerButtons>,
-) -> bool {
-    match phase {
-        PointerPhase::Down => {
-            let Some(changed) = changed_button else {
-                return false;
-            };
-            if !buttons.contains(changed) {
-                return false;
-            }
-            let Some(previous) = previous_buttons else {
-                return true;
-            };
-            if previous.contains(changed) {
-                return false;
-            }
-            let expected = PointerButtons::new(previous.iter().chain(core::iter::once(changed)));
-            &expected == buttons
-        }
-        PointerPhase::Up => {
-            let Some(previous) = previous_buttons else {
-                return false;
-            };
-            let Some(changed) = changed_button else {
-                return false;
-            };
-            if !previous.contains(changed) || buttons.contains(changed) {
-                return false;
-            }
-            let expected = PointerButtons::new(previous.iter().filter(|button| *button != changed));
-            &expected == buttons
-        }
-        PointerPhase::Move | PointerPhase::Wheel => {
-            changed_button.is_none() && previous_buttons.is_none_or(|previous| previous == buttons)
-        }
-        PointerPhase::Cancel => true,
-        _ => false,
-    }
 }
 
 #[cfg(test)]

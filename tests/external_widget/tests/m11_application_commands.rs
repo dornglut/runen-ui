@@ -16,6 +16,23 @@ struct EmitCommand {
 }
 
 impl Widget<ChildAction> for EmitCommand {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -34,7 +51,7 @@ impl Widget<ChildAction> for EmitCommand {
                 Some(SemanticCommand::OpenMenu)
             )
         {
-            context.emit_application_command(self.command.clone());
+            let _ = context.try_emit_application_command(self.command.clone());
         }
         WidgetEventOutput::none()
     }
@@ -48,7 +65,7 @@ impl Widget<ChildAction> for EmitCommand {
         (): &mut Self::State,
         context: &mut WidgetActivationContext<ChildAction>,
     ) -> WidgetActivationOutput<ChildAction> {
-        context.emit_application_command(self.command.clone());
+        let _ = context.try_emit_application_command(self.command.clone());
         WidgetActivationOutput::none()
     }
 }
@@ -59,6 +76,23 @@ struct CommandScopeProbe {
 }
 
 impl Widget<Action> for CommandScopeProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -75,7 +109,7 @@ impl Widget<Action> for CommandScopeProbe {
                 .is_some_and(|event| event.command() == &self.command)
         {
             context.consume_application_command(ApplicationCommandDisposition::Resolved);
-            context.emit(Action::Handled);
+            let _ = context.try_emit(Action::Handled);
         }
         WidgetEventOutput::none()
     }
@@ -94,7 +128,35 @@ enum Action {
 
 struct App;
 
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(2)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(2)
+    }
+
     type State = usize;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -126,7 +188,8 @@ impl UiApp for App {
 
 #[test]
 fn downstream_widgets_emit_and_resolve_application_commands_through_public_contracts() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -180,7 +243,8 @@ fn downstream_widgets_emit_and_resolve_application_commands_through_public_contr
 
 #[test]
 fn downstream_mapped_activation_emits_the_same_scoped_application_command() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -235,6 +299,22 @@ struct DownstreamShortcutScope {
 }
 
 impl Widget<ChildAction> for DownstreamShortcutScope {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -260,7 +340,35 @@ impl ChildBearingWidget<ChildAction> for DownstreamShortcutScope {}
 
 struct ShortcutApp;
 
+impl ShortcutApp {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for ShortcutApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(3)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(3)
+    }
+
     type State = usize;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -302,7 +410,8 @@ impl UiApp for ShortcutApp {
 
 #[test]
 fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge() {
-    let mut runtime = AppRuntime::<ShortcutApp>::mount(0);
+    let mut runtime = AppRuntime::<ShortcutApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

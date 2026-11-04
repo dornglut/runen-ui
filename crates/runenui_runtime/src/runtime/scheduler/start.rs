@@ -155,16 +155,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                             sequence,
                             identity,
                         );
-                        self.revoke_generation(generation);
-                        if let Some(map) = task.start_failure
-                            && self.callback_output_preflight(
-                                None,
+                        let root_quota = self.work.root_quota(generation);
+                        let callback_admitted = task.start_failure.as_ref().is_some_and(|_| {
+                            self.send_task_start_refusal_preflight(
+                                generation,
                                 MandatoryTracePlan::typed_start_refusal_with_action(),
                             )
-                        {
+                        });
+                        if callback_admitted && let Some(map) = task.start_failure {
                             let action = map(failure);
-                            self.queue_callback_action(action, refusal_parent);
+                            if root_quota.is_some() {
+                                self.queue_send_task_action(action, refusal_parent, generation);
+                            } else {
+                                self.queue_callback_action(action, refusal_parent);
+                            }
                         }
+                        self.revoke_generation(generation);
                     }
                 }
             }

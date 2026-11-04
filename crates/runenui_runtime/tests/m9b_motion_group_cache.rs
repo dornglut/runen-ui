@@ -21,6 +21,29 @@ struct GroupLifetimeApp;
 struct EqualSampleApp;
 
 impl UiApp for GroupLifetimeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -37,6 +60,29 @@ impl UiApp for GroupLifetimeApp {
 }
 
 impl UiApp for EqualSampleApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -144,7 +190,8 @@ fn high_contrast_opaque() -> StyleEnvironment {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn active_spec_retains_group_at_identity_sample_and_drops_it_at_terminal_identity() {
-    let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(());
+    let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -171,7 +218,8 @@ fn active_spec_retains_group_at_identity_sample_and_drops_it_at_terminal_identit
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn mandatory_suppression_removes_motion_group_until_the_same_clock_sample_is_revealed() {
-    let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(());
+    let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let high_contrast = high_contrast_opaque();
 
     let initial = publish(&mut runtime, &high_contrast);
@@ -194,7 +242,8 @@ fn mandatory_suppression_removes_motion_group_until_the_same_clock_sample_is_rev
 
 #[test]
 fn equal_sample_reuses_paint_revision_while_active_motion_keeps_redraw_live() {
-    let mut runtime = AppRuntime::<EqualSampleApp>::mount(());
+    let mut runtime = AppRuntime::<EqualSampleApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);

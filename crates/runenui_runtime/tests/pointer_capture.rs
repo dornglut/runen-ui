@@ -51,6 +51,36 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixture has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event output budgets sum to 8 across the mounted owners. Bound
+        // ordinary/boundary route passes and four focus passes, plus four
+        // activation/default outputs. Owner reconciliation and the cursor
+        // service outcome/cancel pair stay inside the same finite frontier.
+        runenui_core::ProducerBudget::new(74, 68)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -91,6 +121,23 @@ struct CaptureProbe {
 }
 
 impl Widget<Action> for CaptureProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(4),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -109,7 +156,7 @@ impl Widget<Action> for CaptureProbe {
                         widget: self.name,
                         kind: boundary.kind(),
                     });
-                context.emit(Action::Boundary(match boundary.kind() {
+                let _ = context.try_emit(Action::Boundary(match boundary.kind() {
                     PointerBoundaryKind::Enter => match self.name {
                         "left" => "boundary-left-enter",
                         "right" => "boundary-right-enter",
@@ -123,7 +170,7 @@ impl Widget<Action> for CaptureProbe {
                     _ => unreachable!("the current boundary kinds are covered"),
                 }));
                 if self.transfer_on_enter && boundary.kind() == PointerBoundaryKind::Enter {
-                    context.capture_pointer();
+                    let _ = context.try_capture_pointer();
                 }
             }
             UiEvent::Pointer(pointer) if pointer.phase() == PointerPhase::Move => {
@@ -135,7 +182,7 @@ impl Widget<Action> for CaptureProbe {
                         routed_target: context.original_target().clone(),
                         physical_target: context.physical_target().cloned(),
                     });
-                context.emit(Action::Pointer(match self.name {
+                let _ = context.try_emit(Action::Pointer(match self.name {
                     "left" => "pointer-left",
                     "right" => "pointer-right",
                     _ => unreachable!("the test has two probes"),
@@ -154,7 +201,7 @@ impl Widget<Action> for CaptureProbe {
                         event_related: capture.related_owner().cloned(),
                         cancelable: context.default_is_cancelable(),
                     });
-                context.emit(Action::Capture(match (self.name, capture.kind()) {
+                let _ = context.try_emit(Action::Capture(match (self.name, capture.kind()) {
                     ("left", PointerCaptureKind::Gained) => "capture-left-gained",
                     ("left", PointerCaptureKind::Lost) => "capture-left-lost",
                     ("right", PointerCaptureKind::Gained) => "capture-right-gained",
@@ -207,7 +254,8 @@ fn harness() -> Harness {
     let mut runtime = AppRuntime::<App>::mount(State {
         callbacks: Rc::clone(&callbacks),
         updates: Rc::clone(&updates),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));

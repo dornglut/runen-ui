@@ -1,4 +1,10 @@
 //! Runtime-owned widget lifecycle contexts and invalidation vocabulary.
+//!
+//! Output emission is fallible and owned; obsolete void methods are absent.
+//! ```compile_fail
+//! use runenui_core::WidgetMountContext;
+//! fn obsolete(context: &mut WidgetMountContext<()>) { context.emit(()); }
+//! ```
 
 use core::{
     future::Future,
@@ -88,12 +94,12 @@ impl<Action> WidgetActivationContextOutputs<Action> {
     }
 }
 
-pub struct WidgetWorkCollector<Action> {
+pub struct WidgetOutputCollector<Action> {
     outputs: Vec<MountedEffect<Action>>,
     activation_order: Option<Vec<WidgetActivationContextOutputOrder>>,
 }
 
-impl<Action> WidgetWorkCollector<Action> {
+impl<Action> WidgetOutputCollector<Action> {
     pub const fn new() -> Self {
         Self {
             outputs: Vec::new(),
@@ -233,13 +239,18 @@ impl<Action> WidgetWorkCollector<Action> {
 }
 
 macro_rules! work_context {
-    ($name:ident $(, $field:ident : $field_ty:ty = $field_default:expr)* $(,)?) => {
+    ($name:ident, $phase:expr $(, $field:ident : $field_ty:ty = $field_default:expr)* $(,)?) => {
         pub struct $name<Action = ()> {
             invalidation: WidgetInvalidation,
             subscription_invalidation: bool,
-            work: WidgetWorkCollector<Action>,
+            work: WidgetOutputCollector<Action>,
             remaining_outputs: Option<usize>,
+            used_outputs: usize,
             overflowed: bool,
+            producer_violation: Option<crate::ProducerContractViolation>,
+            output_limit: Option<usize>,
+            work_starts: Option<crate::WorkStartBudget>,
+            work_used: [usize; 5],
             $($field: $field_ty,)*
         }
 
@@ -259,95 +270,20 @@ macro_rules! work_context {
                 self.invalidation |= invalidation;
             }
 
-            /// Requests one complete owner-local subscription declaration pass.
-            pub const fn invalidate_subscriptions(&mut self) {
-                if !self.subscription_invalidation && self.__runtime_reserve_output() {
-                    self.subscription_invalidation = true;
-                }
-            }
-
-            /// Emits one action owned by the exact mounted lifetime.
-            pub fn emit(&mut self, action: Action) {
-                if self.__runtime_reserve_output() {
-                    self.work.emit(action);
-                }
-            }
-
-            pub fn local_task(&mut self, future: impl Future<Output = Option<Action>> + 'static) {
-                if self.__runtime_reserve_output() {
-                    self.work.local_task(future);
-                }
-            }
-
-            pub fn keyed_local_task(
-                &mut self,
-                key: WorkKey,
-                future: impl Future<Output = Option<Action>> + 'static,
-            ) {
-                if self.__runtime_reserve_output() {
-                    self.work.keyed_local_task(key, future);
-                }
-            }
-
-            pub fn send_task<Output>(
-                &mut self,
-                future: impl Future<Output = Output> + Send + 'static,
-                map: impl FnOnce(Output) -> Action + 'static,
-            ) where
-                Output: Send + 'static,
-            {
-                if self.__runtime_reserve_output() {
-                    self.work.send_task(future, map);
-                }
-            }
-
-            pub fn keyed_send_task<Output>(
-                &mut self,
-                key: WorkKey,
-                future: impl Future<Output = Output> + Send + 'static,
-                map: impl FnOnce(Output) -> Action + 'static,
-            ) where
-                Output: Send + 'static,
-            {
-                if self.__runtime_reserve_output() {
-                    self.work.keyed_send_task(key, future, map);
-                }
-            }
-
-            pub fn send_task_with_failure<Output>(
-                &mut self,
-                future: impl Future<Output = Output> + Send + 'static,
-                map: impl FnOnce(Output) -> Action + 'static,
-                start_failure: impl FnOnce(SendTaskStartFailure) -> Action + 'static,
-            ) where
-                Output: Send + 'static,
-            {
-                if self.__runtime_reserve_output() {
-                    self.work.send_task_with_failure(future, map, start_failure);
-                }
-            }
-
-            pub fn timer(&mut self, timer: TimerEffect<Action>) {
-                if self.__runtime_reserve_output() {
-                    self.work.timer(timer);
-                }
-            }
-
-            pub fn cancel(&mut self, family: WorkFamily, key: WorkKey) {
-                if self.__runtime_reserve_output() {
-                    self.work.cancel(family, key);
-                }
-            }
-
             #[doc(hidden)]
             #[must_use]
             pub const fn __runtime_new() -> Self {
                 Self {
                     invalidation: WidgetInvalidation::NONE,
                     subscription_invalidation: false,
-                    work: WidgetWorkCollector::new(),
+                    work: WidgetOutputCollector::new(),
                     remaining_outputs: None,
+                    used_outputs: 0,
                     overflowed: false,
+                    producer_violation: None,
+                    output_limit: None,
+                    work_starts: None,
+                    work_used: [0; 5],
                     $($field: $field_default,)*
                 }
             }
@@ -358,24 +294,224 @@ macro_rules! work_context {
                 Self {
                     invalidation: WidgetInvalidation::NONE,
                     subscription_invalidation: false,
-                    work: WidgetWorkCollector::new(),
+                    work: WidgetOutputCollector::new(),
                     remaining_outputs: Some(output_allowance),
+                    used_outputs: 0,
                     overflowed: false,
+                    producer_violation: None,
+                    output_limit: Some(output_allowance),
+                    work_starts: None,
+                    work_used: [0; 5],
                     $($field: $field_default,)*
                 }
             }
 
+            /// Returns the first scoped producer integrity violation, even if the
+            /// author ignores the individual operation's fallible result.
+            #[must_use]
+            pub const fn producer_violation(&self) -> Option<crate::ProducerContractViolation> {
+                self.producer_violation
+            }
+
             #[doc(hidden)]
-            pub const fn __runtime_reserve_output(&mut self) -> bool {
+            pub const fn __runtime_try_reserve_output(
+                &mut self,
+            ) -> Result<(), crate::ProducerContractViolation> {
+                if let Some(cause) = self.producer_violation {
+                    return Err(cause);
+                }
                 let Some(remaining) = self.remaining_outputs else {
-                    return true;
+                    self.used_outputs += 1;
+                    return Ok(());
                 };
                 if remaining == 0 {
+                    let cause = crate::ProducerContractViolation::output(
+                        crate::ProducerPhase::Widget($phase),
+                        match self.output_limit { Some(limit) => limit, None => 0 },
+                    );
+                    self.producer_violation = Some(cause);
                     self.overflowed = true;
-                    false
-                } else {
-                    self.remaining_outputs = Some(remaining - 1);
-                    true
+                    return Err(cause);
+                }
+                self.remaining_outputs = Some(remaining - 1);
+                self.used_outputs += 1;
+                Ok(())
+            }
+
+            #[doc(hidden)]
+            pub const fn __runtime_set_work_starts(&mut self, budget: crate::WorkStartBudget) {
+                self.work_starts = Some(budget);
+            }
+
+            fn try_reserve_work(&mut self, family: WorkFamily) -> Result<(), crate::ProducerContractViolation> {
+                if let Some(cause) = self.producer_violation { return Err(cause); }
+                let index = crate::producer_violation::family_index(family);
+                if let Some(cause) = crate::ProducerContractViolation::work_start_overrun(
+                    crate::ProducerPhase::Widget($phase),
+                    family,
+                    self.work_starts.map(|budget| budget.for_family(family)),
+                    self.work_used[index],
+                ) {
+                    self.producer_violation = Some(cause);
+                    self.overflowed = true;
+                    return Err(cause);
+                }
+                self.__runtime_try_reserve_output()?;
+                self.work_used[index] += 1;
+                Ok(())
+            }
+
+            // Mapping lends the same invocation budget to its child. The parent
+            // is exclusively borrowed until the consumed child is absorbed.
+            pub(crate) const fn mapped_child<Child>(&self) -> $name<Child> {
+                let mut child = $name::__runtime_new();
+                child.remaining_outputs = self.remaining_outputs;
+                child.output_limit = self.output_limit;
+                child.used_outputs = self.used_outputs;
+                child.work_starts = self.work_starts;
+                child.work_used = self.work_used;
+                child.producer_violation = self.producer_violation;
+                child.overflowed = self.overflowed;
+                child.subscription_invalidation = self.subscription_invalidation;
+                child
+            }
+
+            pub(crate) fn absorb_budget<Child>(&mut self, child: &$name<Child>) -> bool {
+                self.remaining_outputs = child.remaining_outputs;
+                self.used_outputs = child.used_outputs;
+                self.work_used = child.work_used;
+                self.producer_violation = self.producer_violation.or(child.producer_violation);
+                self.overflowed |= child.overflowed;
+                self.subscription_invalidation |= child.subscription_invalidation;
+                self.producer_violation.is_none()
+            }
+
+            /// Provisional owned action emission; the exact attempted action is
+            /// returned before erasure when the declared allowance is exceeded.
+            ///
+            /// # Errors
+            /// Returns the original value and a sticky producer violation.
+            pub fn try_emit(&mut self, action: Action) -> Result<(), crate::EmitError<Action>> {
+                if let Err(cause) = self.__runtime_try_reserve_output() {
+                    return Err(crate::EmitError::new(action, cause));
+                }
+                self.work.emit(action);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original concrete future before erasure.
+            pub fn try_local_task<F: Future<Output = Option<Action>> + 'static>(
+                &mut self, future: F,
+            ) -> Result<(), crate::EmitError<F>> {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::LocalTask) {
+                    return Err(crate::EmitError::new(future, cause));
+                }
+                self.work.local_task(future);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original key/future tuple before erasure.
+            pub fn try_keyed_local_task<F: Future<Output = Option<Action>> + 'static>(
+                &mut self, key: WorkKey, future: F,
+            ) -> Result<(), crate::EmitError<(WorkKey, F)>> {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::LocalTask) {
+                    return Err(crate::EmitError::new((key, future), cause));
+                }
+                self.work.keyed_local_task(key, future);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original concrete future and mapper before erasure.
+            pub fn try_send_task<I, F, M>(
+                &mut self, future: F, map: M,
+            ) -> Result<(), crate::EmitError<(F, M)>>
+            where
+                I: Send + 'static,
+                F: Future<Output = I> + Send + 'static,
+                M: FnOnce(I) -> Action + 'static,
+            {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+                    return Err(crate::EmitError::new((future, map), cause));
+                }
+                self.work.send_task(future, map);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original key, future and mapper before erasure.
+            pub fn try_keyed_send_task<I, F, M>(
+                &mut self, key: WorkKey, future: F, map: M,
+            ) -> Result<(), crate::EmitError<(WorkKey, F, M)>>
+            where
+                I: Send + 'static,
+                F: Future<Output = I> + Send + 'static,
+                M: FnOnce(I) -> Action + 'static,
+            {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+                    return Err(crate::EmitError::new((key, future, map), cause));
+                }
+                self.work.keyed_send_task(key, future, map);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original future, mapper and failure mapper.
+            pub fn try_send_task_with_failure<I, F, M, E>(
+                &mut self, future: F, map: M, start_failure: E,
+            ) -> Result<(), crate::EmitError<(F, M, E)>>
+            where
+                I: Send + 'static,
+                F: Future<Output = I> + Send + 'static,
+                M: FnOnce(I) -> Action + 'static,
+                E: FnOnce(SendTaskStartFailure) -> Action + 'static,
+            {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+                    return Err(crate::EmitError::new((future, map, start_failure), cause));
+                }
+                self.work.send_task_with_failure(future, map, start_failure);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original timer descriptor before erasure.
+            pub fn try_timer(
+                &mut self, timer: TimerEffect<Action>,
+            ) -> Result<(), crate::EmitError<TimerEffect<Action>>> {
+                if let Err(cause) = self.try_reserve_work(WorkFamily::Timer) {
+                    return Err(crate::EmitError::new(timer, cause));
+                }
+                self.work.timer(timer);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns the original cancellation family/key on allowance failure.
+            pub fn try_cancel(
+                &mut self, family: WorkFamily, key: WorkKey,
+            ) -> Result<(), crate::EmitError<(WorkFamily, WorkKey)>> {
+                if let Err(cause) = self.__runtime_try_reserve_output() {
+                    return Err(crate::EmitError::new((family, key), cause));
+                }
+                self.work.cancel(family, key);
+                Ok(())
+            }
+
+            /// # Errors
+            /// Returns an integrity violation on insufficient declaration credits.
+            pub const fn try_invalidate_subscriptions(
+                &mut self,
+            ) -> Result<(), crate::ProducerContractViolation> {
+                if let Some(cause) = self.producer_violation { return Err(cause); }
+                if self.subscription_invalidation { return Ok(()); }
+                match self.__runtime_try_reserve_output() {
+                    Ok(()) => {
+                        self.subscription_invalidation = true;
+                        Ok(())
+                    }
+                    Err(cause) => Err(cause),
                 }
             }
 
@@ -383,6 +519,12 @@ macro_rules! work_context {
             #[must_use]
             pub const fn __runtime_remaining_outputs(&self) -> Option<usize> {
                 self.remaining_outputs
+            }
+
+            #[doc(hidden)]
+            #[must_use]
+            pub const fn __runtime_used_outputs(&self) -> usize {
+                self.used_outputs
             }
 
             #[doc(hidden)]
@@ -411,28 +553,36 @@ macro_rules! work_context {
             }
 
             #[doc(hidden)]
-            pub fn __runtime_push_output(&mut self, output: MountedEffect<Action>) {
-                if self.__runtime_reserve_output() {
-                    self.work.push_output(output);
-                }
+            pub(super) fn __runtime_push_output(&mut self, output: MountedEffect<Action>) {
+                self.work.push_output(output);
             }
         }
     };
 }
 
-work_context!(WidgetMountContext);
-work_context!(WidgetUpdateContext);
+work_context!(WidgetMountContext, crate::WidgetProducerPhase::Mount);
+work_context!(WidgetUpdateContext, crate::WidgetProducerPhase::Update);
 work_context!(
-    WidgetActivationContext,
+    WidgetActivationContext, crate::WidgetProducerPhase::Activation,
     semantic_target: Option<SemanticActionTarget> = None,
 );
 
 impl<Action> WidgetActivationContext<Action> {
-    /// Stages one contextual application command for later FIFO processing.
-    pub fn emit_application_command(&mut self, command: ApplicationCommandId) {
-        if self.__runtime_reserve_output() {
-            self.work.push_application_command(command);
+    pub(crate) fn set_semantic_target(&mut self, target: Option<SemanticActionTarget>) {
+        self.semantic_target = target;
+    }
+
+    /// # Errors
+    /// Returns the original application command on declared allowance overflow.
+    pub fn try_emit_application_command(
+        &mut self,
+        command: ApplicationCommandId,
+    ) -> Result<(), crate::EmitError<ApplicationCommandId>> {
+        if let Err(cause) = self.__runtime_try_reserve_output() {
+            return Err(crate::EmitError::new(command, cause));
         }
+        self.work.push_application_command(command);
+        Ok(())
     }
 
     /// Borrows the exact semantic target when this activation originated from
@@ -472,10 +622,8 @@ impl<Action> WidgetActivationContext<Action> {
     }
 
     #[doc(hidden)]
-    pub fn __runtime_push_application_command(&mut self, command: ApplicationCommandId) {
-        if self.__runtime_reserve_output() {
-            self.work.push_application_command(command);
-        }
+    pub(super) fn __runtime_push_application_command(&mut self, command: ApplicationCommandId) {
+        self.work.push_application_command(command);
     }
 }
 
@@ -513,7 +661,10 @@ mod tests {
         ApplicationCommandId, SemanticAction, SemanticActionTarget, SemanticKey,
     };
 
-    use super::{WidgetActivationContext, WidgetActivationContextOutputOrder, WidgetInvalidation};
+    use super::{
+        WidgetActivationContext, WidgetActivationContextOutputOrder, WidgetInvalidation,
+        WidgetMountContext, WidgetUpdateContext,
+    };
 
     #[test]
     fn invalidation_union_and_containment_are_exact() {
@@ -532,9 +683,9 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("static command id is valid"));
         let mut context = WidgetActivationContext::__runtime_new_bounded(2);
 
-        context.emit(7_u8);
-        context.emit_application_command(command.clone());
-        context.emit(9_u8);
+        let _ = context.try_emit(7_u8);
+        let _ = context.try_emit_application_command(command.clone());
+        let _ = context.try_emit(9_u8);
 
         assert_eq!(context.__runtime_remaining_outputs(), Some(0));
         assert!(context.__runtime_overflowed());
@@ -581,5 +732,155 @@ mod tests {
         assert_eq!(observed.target(), &node);
         assert_eq!(observed.semantic_key(), &key);
         assert_eq!(observed.action(), &SemanticAction::Activate);
+    }
+
+    #[test]
+    fn bounded_mount_fallible_emission_returns_identical_nonclone_action_and_latches() {
+        struct NonClone {
+            marker: std::rc::Rc<()>,
+        }
+        let marker = std::rc::Rc::new(());
+        let mut context = WidgetMountContext::<NonClone>::__runtime_new_bounded(1);
+        context
+            .try_emit(NonClone {
+                marker: marker.clone(),
+            })
+            .unwrap_or_else(|_| unreachable!("first output is within limit"));
+        let rejected = NonClone {
+            marker: marker.clone(),
+        };
+        let (recovered, cause) = context
+            .try_emit(rejected)
+            .err()
+            .unwrap_or_else(|| unreachable!("second output exceeds limit"))
+            .into_parts();
+        assert!(std::rc::Rc::ptr_eq(&recovered.marker, &marker));
+        assert_eq!(
+            cause.phase,
+            crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Mount)
+        );
+        assert_eq!(cause.declared, 1);
+        assert_eq!(cause.attempted, Some(2));
+        assert_eq!(context.producer_violation(), Some(cause));
+        assert!(context.__runtime_overflowed());
+        // Handling the error cannot clear terminal producer integrity.
+        assert_eq!(context.try_invalidate_subscriptions(), Err(cause));
+        assert_eq!(context.__runtime_take_outputs().len(), 1);
+    }
+
+    #[test]
+    fn ignored_fallible_update_result_does_not_clear_first_failure() {
+        let mut context = WidgetUpdateContext::<usize>::__runtime_new_bounded(0);
+        drop(context.try_emit(3));
+        let cause = context
+            .producer_violation()
+            .unwrap_or_else(|| unreachable!("zero allowance must latch"));
+        let (recovered, second_cause) = context
+            .try_emit(4)
+            .err()
+            .unwrap_or_else(|| unreachable!("subsequent output must fail"))
+            .into_parts();
+        assert_eq!(recovered, 4);
+        assert_eq!(second_cause, cause);
+        assert_eq!(
+            cause.phase,
+            crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Update)
+        );
+        assert!(context.__runtime_take_outputs().is_empty());
+    }
+
+    #[test]
+    fn activation_fallible_command_and_primary_output_share_one_credit_pool() {
+        let mut context = WidgetActivationContext::<u8>::__runtime_new_bounded(1);
+        let command = ApplicationCommandId::from_static("document.save")
+            .unwrap_or_else(|_| unreachable!("static id valid"));
+        context
+            .try_emit(7)
+            .unwrap_or_else(|_| unreachable!("in allowance"));
+        let (recovered, cause) = context
+            .try_emit_application_command(command.clone())
+            .err()
+            .unwrap_or_else(|| unreachable!("command exceeds allowance"))
+            .into_parts();
+        assert_eq!(recovered, command);
+        assert_eq!(
+            cause.phase,
+            crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Activation)
+        );
+        assert!(
+            context.__runtime_try_reserve_output().is_err(),
+            "primary activation output cannot bypass sticky failure"
+        );
+        assert_eq!(context.producer_violation(), Some(cause));
+        let (mounted, order) = context
+            .__runtime_take_activation_outputs()
+            .__runtime_into_parts();
+        assert_eq!(mounted.len(), 1);
+        assert!(matches!(&mounted[0], MountedEffect::Action(7)));
+        assert!(order.is_none());
+    }
+    #[test]
+    fn every_lifecycle_family_reserves_output_and_start_credits_atomically() {
+        macro_rules! check {
+            ($context:ident,$phase:ident) => {
+                for family in [
+                    crate::WorkFamily::LocalTask,
+                    crate::WorkFamily::SendTask,
+                    crate::WorkFamily::Timer,
+                ] {
+                    let mut context = $context::<u8>::__runtime_new_bounded(1);
+                    context.__runtime_set_work_starts(crate::WorkStartBudget::default());
+                    let cause = match family {
+                        crate::WorkFamily::LocalTask => context
+                            .try_local_task(std::future::pending())
+                            .err()
+                            .unwrap_or_else(|| unreachable!())
+                            .violation(),
+                        crate::WorkFamily::SendTask => context
+                            .try_send_task(std::future::pending::<u8>(), |item| item)
+                            .err()
+                            .unwrap_or_else(|| unreachable!())
+                            .violation(),
+                        crate::WorkFamily::Timer => context
+                            .try_timer(crate::TimerEffect::once(std::time::Duration::ZERO, || 7))
+                            .err()
+                            .unwrap_or_else(|| unreachable!())
+                            .violation(),
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(
+                        cause.phase,
+                        crate::ProducerPhase::Widget(crate::WidgetProducerPhase::$phase)
+                    );
+                    assert_eq!(cause.component, crate::BudgetComponent::WorkStarts(family));
+                    assert_eq!(context.__runtime_remaining_outputs(), Some(1));
+                    assert_eq!(context.__runtime_used_outputs(), 0);
+                    assert_eq!(context.work_used, [0; 5]);
+                    assert_eq!(
+                        context
+                            .try_emit(9)
+                            .err()
+                            .unwrap_or_else(|| unreachable!())
+                            .violation(),
+                        cause
+                    );
+                }
+                let mut context = $context::<u8>::__runtime_new_bounded(0);
+                context.__runtime_set_work_starts(crate::WorkStartBudget::new(1, 0, 0, 0, 0));
+                assert_eq!(
+                    context
+                        .try_local_task(std::future::pending())
+                        .err()
+                        .unwrap_or_else(|| unreachable!())
+                        .violation()
+                        .component,
+                    crate::BudgetComponent::Outputs
+                );
+                assert_eq!(context.work_used, [0; 5]);
+            };
+        }
+        check!(WidgetMountContext, Mount);
+        check!(WidgetUpdateContext, Update);
+        check!(WidgetActivationContext, Activation);
     }
 }

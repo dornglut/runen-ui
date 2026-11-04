@@ -29,7 +29,39 @@ struct State {
 
 struct RadioApp;
 
+impl RadioApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 7 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 7;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+}
+
 impl UiApp for RadioApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -81,7 +113,37 @@ struct ExternallyManagedState {
 
 struct ExternallyManagedRadioApp;
 
+impl ExternallyManagedRadioApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 3 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 3;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ExternallyManagedRadioApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ExternallyManagedState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -111,6 +173,19 @@ impl UiApp for ExternallyManagedRadioApp {
 struct PreventDirectionalNavigation;
 
 impl Widget<Action> for PreventDirectionalNavigation {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -142,7 +217,37 @@ impl ChildBearingWidget<Action> for PreventDirectionalNavigation {}
 
 struct PreventedRadioNavigationApp;
 
+impl PreventedRadioNavigationApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 4 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 4;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for PreventedRadioNavigationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ExternallyManagedState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -170,7 +275,37 @@ impl UiApp for PreventedRadioNavigationApp {
 
 struct InvalidRadioApp;
 
+impl InvalidRadioApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 3 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 3;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for InvalidRadioApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -285,7 +420,8 @@ fn radio_semantics_form_one_group_with_exact_application_checked_state() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let group = harness
@@ -329,7 +465,8 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -366,7 +503,8 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
@@ -386,7 +524,8 @@ fn directional_radio_navigation_wraps_focus_then_activates_application_state() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
 
@@ -419,7 +558,8 @@ fn disabled_radio_is_skipped_and_rejects_semantic_activation() {
         disable_two: true,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
     command(&mut harness, "radio.one", SemanticCommand::FocusRight);
@@ -450,7 +590,8 @@ fn disabled_radio_is_skipped_and_rejects_semantic_activation() {
         disable_two: false,
         hide_two_from_focus: true,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
     command(&mut harness, "radio.one", SemanticCommand::FocusRight);
@@ -470,7 +611,8 @@ fn raw_keyboard_arrow_and_space_use_the_same_radio_authority() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
@@ -511,7 +653,8 @@ fn controller_origin_directional_command_uses_radio_group_navigation() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
@@ -538,7 +681,8 @@ fn semantic_activation_updates_application_selection_before_checked_republicatio
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let two = harness
@@ -589,7 +733,8 @@ fn programmatic_surface_focus_targets_one_radio_without_selecting_it() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let three = radio_query("Three", SemanticCheckedState::Unchecked);
@@ -616,7 +761,8 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
         disable_two: false,
         hide_two_from_focus: false,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let point = published_hit_point(&harness, "radio.two");
@@ -663,7 +809,8 @@ fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
     let mut harness = TestHarness::<ExternallyManagedRadioApp>::mount(ExternallyManagedState {
         selected: 1,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     harness
@@ -692,7 +839,8 @@ fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
     let mut harness = TestHarness::<PreventedRadioNavigationApp>::mount(ExternallyManagedState {
         selected: 1,
         activations: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     harness
@@ -720,7 +868,8 @@ fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn invalid_multiple_checked_group_fails_closed_without_rewriting_children() {
-    let mut harness = TestHarness::<InvalidRadioApp>::mount(());
+    let mut harness = TestHarness::<InvalidRadioApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     assert!(
         harness

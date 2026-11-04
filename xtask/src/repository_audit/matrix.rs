@@ -1228,7 +1228,8 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 541);
+        // Six qualified-producer observations extend the retained inventory.
+        assert_eq!(total, 547);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

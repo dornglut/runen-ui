@@ -1,6 +1,10 @@
 use core::mem;
+use std::collections::HashMap;
 
-use runenui_core::{CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind};
+use runenui_core::{
+    CommandOrigin, MonotonicInstant, ProducerBudget, SemanticCommand, SemanticRelationshipKind,
+    WorkFamily, WorkResidencyBudget, WorkStartBudget,
+};
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
@@ -19,6 +23,130 @@ use crate::{
 struct PublicationAdmission {
     surface: SurfacePublicationAdmission,
     stationary_rehit: bool,
+}
+
+struct SurfacePublicationCompletion<'a> {
+    publication: &'a crate::SurfacePublication,
+    previous_semantics: Option<&'a crate::SemanticPublication>,
+    published: Option<TraceSequence>,
+    stationary_rehit: bool,
+    producer_root: Option<crate::queue::RootQuotaId>,
+    instant: MonotonicInstant,
+    redraw: Option<crate::RedrawRequest>,
+    followup_redraw: Option<RedrawRevisionAdmission>,
+}
+
+struct SurfacePublicationCandidateState {
+    previous_semantics: Option<crate::SemanticPublication>,
+    focused_owner: Option<crate::MountedNodeId>,
+    interaction: crate::surface::SurfaceInteractionProjection,
+    editing: HashMap<crate::MountedNodeId, crate::editing::EditingSemanticProjection>,
+    sensitivities: HashMap<crate::MountedNodeId, runenui_core::TextSensitivity>,
+    preedits: HashMap<crate::MountedNodeId, std::sync::Arc<runenui_text::TextPreeditProjection>>,
+    instant: MonotonicInstant,
+}
+
+impl SurfacePublicationCandidateState {
+    const fn inputs(
+        &self,
+        admission: SurfacePublicationAdmission,
+    ) -> SurfacePublicationCandidateInputs<'_> {
+        SurfacePublicationCandidateInputs::new(
+            &self.interaction,
+            self.focused_owner.as_ref(),
+            &self.editing,
+            &self.sensitivities,
+            &self.preedits,
+            admission,
+            self.instant,
+        )
+    }
+}
+
+fn publication_reveal_candidates<'a>(
+    current: &'a crate::SemanticPublication,
+    previous: Option<&'a crate::SemanticPublication>,
+) -> impl Iterator<Item = &'a crate::SemanticNode> + 'a {
+    current.snapshot().nodes().iter().filter(move |node| {
+        if node.state().expanded() != Some(true) || node.state().disabled() || node.state().inert()
+        {
+            return false;
+        }
+        let active = node
+            .relationships()
+            .iter()
+            .find(|relation| relation.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .map(crate::SemanticRelationship::target);
+        active.is_some_and(|active| {
+            !previous.is_some_and(|previous| {
+                let old = previous.snapshot();
+                old.node(node.id())
+                    .is_some_and(|node| node.state().expanded() == Some(true))
+                    && old.node(active).is_some()
+            })
+        })
+    })
+}
+
+/// Composes simultaneous descendant frontiers, rather than giving each derived
+/// request a new root that could compete after publication has committed.
+fn publication_producer_budget(
+    interaction: Option<ProducerBudget>,
+    derived_turns: usize,
+    rehit: bool,
+    input_method: bool,
+) -> Option<ProducerBudget> {
+    let child = if derived_turns == 0 {
+        ProducerBudget::new(0, 0)
+    } else {
+        let child = interaction?;
+        if child.queue_credits() == 0 {
+            return None;
+        }
+        child
+    };
+    let service = usize::from(input_method);
+    // One runtime IME request has a start and independent response/cancel
+    // credits. Re-hit itself has one sequenced envelope in addition to the
+    // per-pointer routed descendants included in derived_turns.
+    let credits = child
+        .queue_credits()
+        .checked_mul(derived_turns)?
+        .checked_add(service.checked_mul(3)?)?
+        .checked_add(usize::from(rehit))?;
+    let residency = child.work_residency();
+    let scaled = |family| residency.for_family(family).checked_mul(derived_turns);
+    Some(
+        ProducerBudget::new(credits, child.outputs().max(service))
+            .with_application_outputs(child.application_outputs())
+            .with_reconciliation(
+                child.mounted_nodes(),
+                child.retained_updates(),
+                child.dirty_subscription_owners(),
+            )
+            .with_subscriptions(
+                child.application_subscriptions(),
+                child.mounted_subscriptions_per_owner(),
+            )
+            .with_work_starts(WorkStartBudget::new(
+                child.work_starts().for_family(WorkFamily::LocalTask),
+                child.work_starts().for_family(WorkFamily::SendTask),
+                child.work_starts().for_family(WorkFamily::Timer),
+                child.work_starts().for_family(WorkFamily::HostRequest),
+                child
+                    .work_starts()
+                    .for_family(WorkFamily::FrameworkService)
+                    .max(service),
+            ))
+            .with_work_residency(WorkResidencyBudget::new(
+                scaled(WorkFamily::LocalTask)?,
+                scaled(WorkFamily::SendTask)?,
+                scaled(WorkFamily::Timer)?,
+                residency.subscriptions().checked_mul(derived_turns)?,
+                scaled(WorkFamily::HostRequest)?,
+                scaled(WorkFamily::FrameworkService)?.checked_add(service)?,
+            )),
+    )
 }
 
 fn candidate_trace_plan(
@@ -177,74 +305,138 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
-        // A successful publication can now return its exact direct ownership
-        // transition. Reserve the complete post-commit projection before the
-        // retained scene changes. Pending composition/publication boundaries
-        // (or an unmaterialized initial state) are intentionally left as gaps.
+        // Preserve accepted #537 observation admission before any retained
+        // mutation or producer reservation. Pending direct boundaries stay gaps.
         let direct_input_observation = self
             .reserve_direct_publication_observation()
             .map_err(PublishSurfaceError::InputObservation)?;
+        let presentation_commands = self
+            .publication_presentation_command_bound()
+            .ok_or(PublishSurfaceError::InvalidProducerProfile)?;
+        let reveal_bound = self
+            .tree
+            .publication_reveal_bound()
+            .ok_or(PublishSurfaceError::InvalidProducerProfile)?;
+        let rehit_pointers = self
+            .pointer_registry
+            .publication_pointer_count(self.queue.queued_pointer_ids());
+        let input_method = self.publication_input_method_may_be_staged();
+        let derived_turns = reveal_bound
+            .checked_add(presentation_commands)
+            .and_then(|count| count.checked_add(rehit_pointers))
+            .ok_or(PublishSurfaceError::InvalidProducerProfile)?;
+        let interaction_budget = if derived_turns == 0 {
+            None
+        } else {
+            self.interaction_producer_budget
+                .map(|profile| profile(self.state()))
+        };
+        let producer = publication_producer_budget(
+            interaction_budget,
+            derived_turns,
+            admission.stationary_rehit,
+            input_method,
+        )
+        .ok_or(PublishSurfaceError::InvalidProducerProfile)?;
+        let producer_reservation = if producer.queue_credits() == 0 {
+            None
+        } else {
+            if !self.application_output_budget_fits(producer) {
+                return Err(PublishSurfaceError::InvalidProducerProfile);
+            }
+            // Every knowable resource refusal precedes publication capability
+            // callbacks. Candidate shape must fit the declaration afterwards.
+            self.queue
+                .preflight_reservation(producer.queue_credits())
+                .map_err(|error| self.publication_reservation_error(error))?;
+            self.work
+                .preflight_producer_residency(&self.queue, producer)
+                .map_err(PublishSurfaceError::WorkCapacity)?;
+            if input_method && self.work.preview_generations(1).is_err() {
+                let reason = RuntimeTerminalReason::WorkGenerationExhausted;
+                self.enter_terminal(reason, 0);
+                return Err(PublishSurfaceError::Terminal(reason));
+            }
+            Some(
+                self.reserve_producer(producer)
+                    .map_err(|error| self.publication_reservation_error(error))?,
+            )
+        };
+        let producer_root = producer_reservation
+            .as_ref()
+            .map(crate::queue::QueueReservation::quota);
+        let result = self.publish_surface_admitted(context, admission, reveal_bound, producer_root);
+        if matches!(self.status, RuntimeStatus::Running)
+            && let Some(reservation) = producer_reservation.as_ref()
+            && self.queue.finish_reservation(reservation).is_err()
+        {
+            let reason = RuntimeTerminalReason::Poisoned;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+        let mut publication = result?;
+        self.retire_input_continuation_claims();
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+        if let Some((before_revision, reservation)) = direct_input_observation {
+            let (after, transition) = self.input_ownership_reserved(reservation);
+            let exact_single_step = before_revision
+                .get()
+                .checked_add(1)
+                .is_some_and(|expected| after.revision().get() == expected);
+            let exact_publication_context = after.surfaces().iter().any(|surface| {
+                surface.surface_id() == publication.input_context().surface_id()
+                    && surface.latest_retained_context() == Some(publication.input_context())
+            });
+            if exact_single_step
+                && after.status() == RuntimeStatus::Running
+                && exact_publication_context
+            {
+                publication =
+                    publication.with_input_ownership_transition(crate::InputOwnershipTransition {
+                        before_revision,
+                        after: transition,
+                    });
+            }
+        }
+        Ok(publication)
+    }
+
+    fn publish_surface_admitted(
+        &mut self,
+        context: &crate::SurfaceBuildContext<'_>,
+        admission: PublicationAdmission,
+        reveal_bound: usize,
+        producer_root: Option<crate::queue::RootQuotaId>,
+    ) -> Result<crate::SurfacePublication, PublishSurfaceError> {
         // Retain a cheap immutable handle to the previous committed semantic
         // publication. Exact lookup is O(1) per candidate, without cloning
         // every semantic node or building an unbounded mirror of its IDs.
-        let previous_semantics = self
-            .surface_publication
-            .current_semantic_publication()
-            .cloned();
-        let instant = self.now();
-        let focused_owner = self.focus.focused_node().cloned();
-        let interaction = self
-            .pointer_registry
-            .surface_interaction_projection(focused_owner.as_ref())
-            .with_focus_visible(self.focus.focus_visible());
-        let editing = self.editing.semantic_projections();
-        let sensitivities = self.editing.sensitivity_projections();
-        let preedits = self.editing.preedit_projections();
-        let candidate = SurfacePublicationCandidateInputs::new(
-            &interaction,
-            focused_owner.as_ref(),
-            &editing,
-            &sensitivities,
-            &preedits,
-            admission.surface,
-            instant,
-        );
-        let staged = match self.surface_publication.plan_publication(
+        let candidate_state = self.surface_publication_candidate_state();
+        let stationary_rehit = admission.stationary_rehit;
+        let candidate = candidate_state.inputs(admission.surface);
+        let staged = self.surface_publication.plan_publication(
             &mut self.tree,
             &mut self.text_system,
             context,
             candidate,
-        ) {
+        );
+        let staged = match staged {
             Ok(staged) => staged,
-            Err(SurfacePublicationPlanError::SemanticIntegrity) => {
-                let reason = RuntimeTerminalReason::Poisoned;
-                self.enter_terminal(reason, 0);
-                return Err(PublishSurfaceError::Terminal(reason));
-            }
-            Err(SurfacePublicationPlanError::TextLayout(error)) => {
-                return Err(PublishSurfaceError::TextLayout(error));
-            }
-            Err(SurfacePublicationPlanError::PresentationGeometry) => {
-                return Err(PublishSurfaceError::PresentationGeometry);
-            }
-            Err(SurfacePublicationPlanError::Motion(failure)) => {
-                self.record_motion_planning_rejection(&failure, instant)?;
-                return Err(PublishSurfaceError::Motion);
-            }
-            Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
-                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
-                self.enter_terminal(reason, 0);
-                return Err(PublishSurfaceError::Terminal(reason));
+            Err(error) => {
+                return Err(self.surface_publication_plan_error(error, candidate_state.instant)?);
             }
         };
-
+        let previous_semantics = candidate_state.previous_semantics;
+        let instant = candidate_state.instant;
         let motion_trace_facts = staged.motion_trace_facts();
         let motion_activity = staged.motion_activity();
         let request_followup =
             motion_activity.continuous_redraw() || motion_activity.followup_publication();
         let Some(candidate_trace_plan) = candidate_trace_plan(
             self.surface_publication.is_dirty(),
-            admission.stationary_rehit,
+            stationary_rehit,
             request_followup,
             motion_trace_facts.len(),
         ) else {
@@ -275,8 +467,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         };
 
+        if publication_reveal_candidates(staged.semantic_publication(), previous_semantics.as_ref())
+            .count()
+            > reveal_bound
+        {
+            drop(staged);
+            let reason = RuntimeTerminalReason::Poisoned;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
         let commit = staged.commit_store();
-        let mut publication = self
+        let publication = self
             .surface_publication
             .commit_publication(&mut self.tree, commit);
         self.note_direct_input_ownership_boundary();
@@ -295,7 +496,85 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             &publication,
         );
-        self.synchronize_presentation_lifecycle_after_publication(published);
+        self.finish_admitted_surface_publication(SurfacePublicationCompletion {
+            publication: &publication,
+            previous_semantics: previous_semantics.as_ref(),
+            published,
+            stationary_rehit,
+            producer_root,
+            instant,
+            redraw,
+            followup_redraw,
+        })?;
+        Ok(publication)
+    }
+
+    fn surface_publication_candidate_state(&self) -> SurfacePublicationCandidateState {
+        let instant = self.now();
+        let focused_owner = self.focus.focused_node().cloned();
+        let interaction = self
+            .pointer_registry
+            .surface_interaction_projection(focused_owner.as_ref())
+            .with_focus_visible(self.focus.focus_visible());
+        SurfacePublicationCandidateState {
+            previous_semantics: self
+                .surface_publication
+                .current_semantic_publication()
+                .cloned(),
+            focused_owner,
+            interaction,
+            editing: self.editing.semantic_projections(),
+            sensitivities: self.editing.sensitivity_projections(),
+            preedits: self.editing.preedit_projections(),
+            instant,
+        }
+    }
+
+    fn surface_publication_plan_error(
+        &mut self,
+        error: SurfacePublicationPlanError,
+        instant: MonotonicInstant,
+    ) -> Result<PublishSurfaceError, PublishSurfaceError> {
+        let error = match error {
+            SurfacePublicationPlanError::SemanticIntegrity => {
+                let reason = RuntimeTerminalReason::Poisoned;
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
+            }
+            SurfacePublicationPlanError::TextLayout(error) => {
+                PublishSurfaceError::TextLayout(error)
+            }
+            SurfacePublicationPlanError::PresentationGeometry => {
+                PublishSurfaceError::PresentationGeometry
+            }
+            SurfacePublicationPlanError::Motion(failure) => {
+                self.record_motion_planning_rejection(&failure, instant)?;
+                PublishSurfaceError::Motion
+            }
+            SurfacePublicationPlanError::CounterExhausted(counter) => {
+                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
+            }
+        };
+        Ok(error)
+    }
+
+    fn finish_admitted_surface_publication(
+        &mut self,
+        completion: SurfacePublicationCompletion<'_>,
+    ) -> Result<(), PublishSurfaceError> {
+        let SurfacePublicationCompletion {
+            publication,
+            previous_semantics,
+            published,
+            stationary_rehit,
+            producer_root,
+            instant,
+            redraw,
+            followup_redraw,
+        } = completion;
+        self.synchronize_presentation_lifecycle_after_publication(published, producer_root);
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
@@ -303,17 +582,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // Route one exact mounted-generation reveal through the existing M4/#344
         // command queue, never through a second scroll or focus controller.
         self.reveal_newly_published_active_descendants(
-            &publication,
-            previous_semantics.as_ref(),
+            publication,
+            previous_semantics,
             published,
+            producer_root,
         );
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
-        if admission.stationary_rehit {
-            self.commit_stationary_pointer_rehit(&publication, instant, published);
+        if stationary_rehit {
+            self.commit_stationary_pointer_rehit(publication, instant, published, producer_root);
         }
-        self.synchronize_input_method_after_publication(published, instant);
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+        self.synchronize_input_method_after_publication(published, instant, producer_root);
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
@@ -325,35 +608,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(admission) = followup_redraw {
             self.commit_admitted_redraw_request(admission, published, instant);
         }
-        if let RuntimeStatus::Terminal(reason) = self.status {
-            return Err(PublishSurfaceError::Terminal(reason));
-        }
-        if let Some((before_revision, reservation)) = direct_input_observation {
-            let (after, transition) = self.input_ownership_reserved(reservation);
-            // The direct publication note is the only synchronous ownership
-            // boundary expected after reservation. Future hooks may add one;
-            // keep the result conservative in release builds if that invariant
-            // changes rather than certifying a coalesced interval.
-            let exact_single_step = before_revision
-                .get()
-                .checked_add(1)
-                .is_some_and(|expected| after.revision().get() == expected);
-            let exact_publication_context = after.surfaces().iter().any(|surface| {
-                surface.surface_id() == publication.input_context().surface_id()
-                    && surface.latest_retained_context() == Some(publication.input_context())
-            });
-            if exact_single_step
-                && after.status() == RuntimeStatus::Running
-                && exact_publication_context
-            {
-                publication =
-                    publication.with_input_ownership_transition(crate::InputOwnershipTransition {
-                        before_revision,
-                        after: transition,
-                    });
+        Ok(())
+    }
+
+    fn publication_reservation_error(
+        &mut self,
+        error: crate::queue::QueueReservationError,
+    ) -> PublishSurfaceError {
+        use crate::queue::QueueReservationError;
+        match error {
+            QueueReservationError::Capacity => PublishSurfaceError::Full,
+            QueueReservationError::WorkCapacity(family) => {
+                PublishSurfaceError::WorkCapacity(family)
+            }
+            QueueReservationError::Closed => PublishSurfaceError::Closed,
+            QueueReservationError::SequenceExhausted => {
+                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
+            }
+            QueueReservationError::Foreign
+            | QueueReservationError::Stale
+            | QueueReservationError::Exhausted => {
+                let reason = RuntimeTerminalReason::Poisoned;
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
             }
         }
-        Ok(publication)
     }
 
     fn reveal_newly_published_active_descendants(
@@ -361,16 +642,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         publication: &crate::SurfacePublication,
         previous: Option<&crate::SemanticPublication>,
         causal_parent: Option<TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         let snapshot = publication.semantic_publication().snapshot();
         // Stream current semantic owners rather than materializing a second
         // unbounded list of candidates. Admission remains with the canonical
         // #344 command FIFO, even for very large semantic publications.
-        for combo in snapshot.nodes().iter().filter(|node| {
-            node.state().expanded() == Some(true)
-                && !node.state().disabled()
-                && !node.state().inert()
-        }) {
+        for combo in publication_reveal_candidates(publication.semantic_publication(), previous) {
             let target = (|| {
                 // The semantic compositor validates these generic relationships;
                 // demand exactly one of each and current mounted ancestry. No
@@ -388,17 +666,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 // Both relationship targets must exist in this committed snapshot.
                 snapshot.node(list_id)?;
                 let option = snapshot.node(active_id)?;
-                // Only a newly opened popup or a newly mounted Option generation
-                // needs this post-publication command. Already-mounted keyboard
-                // navigation has its own exact event-time routed command.
-                if previous.is_some_and(|previous| {
-                    let old = previous.snapshot();
-                    old.node(combo.id())
-                        .is_some_and(|node| node.state().expanded() == Some(true))
-                        && old.node(active_id).is_some()
-                }) {
-                    return None;
-                }
                 if option.state().disabled() || option.state().inert() {
                     return None;
                 }
@@ -431,6 +698,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     SemanticCommand::ScrollIntoView,
                     CommandOrigin::programmatic(),
                     causal_parent,
+                    root_quota,
                 )
                 .is_err()
                 && !matches!(self.status, RuntimeStatus::Running)
@@ -553,6 +821,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         publication: &crate::SurfacePublication,
         instant: MonotonicInstant,
         published: Option<TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         let input_context = publication.input_context();
         let work_sequence = self
@@ -574,7 +843,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             None
         };
-        let committed = self.queue.push_pointer_rehit_preflighted(
+        let Some(root_quota) = root_quota else {
+            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            return;
+        };
+        let committed = self.queue.push_pointer_rehit_rooted(
+            root_quota,
             input_context.clone(),
             instant,
             causal_parent,
@@ -582,8 +856,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         match committed {
             Ok(_) => self.external_queue_commit_accepted(),
-            Err(QueueCommitError::Full | QueueCommitError::SequenceExhausted) => {
-                unreachable!("stationary pointer re-hit queue admission was preflighted")
+            Err(_) => {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             }
         }
     }
@@ -656,6 +930,19 @@ mod tests {
     struct MotionProbe;
 
     impl Widget<()> for MotionProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -701,7 +988,16 @@ mod tests {
             (),
             |()| Element::new(MotionProbe).timeline(active_opacity_timeline()),
             RuntimeConfig::default(),
-        );
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1),
+            |(), _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|error| unreachable!("internal test mount rejected: {error}"));
         runtime
             .surface_publication
             .seed_redraw_revision_for_test(u64::MAX);

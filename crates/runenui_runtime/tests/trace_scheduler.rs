@@ -13,6 +13,29 @@ use runenui_runtime::{
 struct TraceApp;
 
 impl UiApp for TraceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One text owner and one local start with outcome/cancel credits.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -30,7 +53,8 @@ impl UiApp for TraceApp {
 
 #[test]
 fn scheduler_trace_covers_effect_checkpoint_update_and_redraw_transitions() {
-    let mut runtime = AppRuntime::<TraceApp>::mount(0);
+    let mut runtime = AppRuntime::<TraceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(3, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -188,6 +212,25 @@ struct OrderedWidget {
 }
 
 impl Widget<OrderedAction> for OrderedWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_subscriptions(1)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Update => runenui_core::WidgetProducerBudget::new(2),
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = u64;
 
     fn create_state(&self) -> Self::State {
@@ -197,13 +240,13 @@ impl Widget<OrderedAction> for OrderedWidget {
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<OrderedAction>) {
         if *state != self.revision {
             *state = self.revision;
-            context.invalidate_subscriptions();
-            context.emit(OrderedAction::MountedOutput);
+            let _ = context.try_invalidate_subscriptions();
+            let _ = context.try_emit(OrderedAction::MountedOutput);
         }
     }
 
     fn subscriptions(&self, _: &Self::State, subscriptions: &mut SubscriptionSet<OrderedAction>) {
-        subscriptions.local(
+        let _ = subscriptions.try_local(
             WorkKey::new("ordered.mounted").unwrap_or_else(|_| unreachable!()),
             self.revision,
             |_: &mut core::task::Context<'_>| Poll::Pending,
@@ -218,6 +261,36 @@ struct OrderedState {
 struct OrderedTransactionApp;
 
 impl UiApp for OrderedTransactionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One owner and two local subscription starts, each retaining its own
+        // outcome/cancel pair and subscription record.
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 2, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // One owner, two app outputs, mounted invalidation/action, two subscription
+        // starts and all three starts' outcome/cancel pairs share one frontier.
+        runenui_core::ProducerBudget::new(12, 4)
+            // The application/reconciliation component includes the mounted
+            // action alongside the application's action and task start.
+            .with_application_outputs(3)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(3, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 2, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = OrderedState;
     type Action = OrderedAction;
     type HostProtocol = NoHostProtocol;
@@ -242,7 +315,7 @@ impl UiApp for OrderedTransactionApp {
     }
 
     fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
-        subscriptions.local(
+        let _ = subscriptions.try_local(
             WorkKey::new("ordered.application").unwrap_or_else(|_| unreachable!()),
             state.revision,
             |_: &mut core::task::Context<'_>| Poll::Pending,
@@ -258,32 +331,49 @@ fn sequence_value(sequence: Option<WorkSequence>) -> u64 {
 
 #[test]
 fn application_transaction_assigns_the_global_adr_order_exactly() {
-    let mut runtime = AppRuntime::<OrderedTransactionApp>::mount(OrderedState { revision: 0 });
-    let _ = runtime
+    let mut runtime = AppRuntime::<OrderedTransactionApp>::mount(OrderedState { revision: 0 })
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
+    runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let trigger_sequence = runtime
         .submit_action(OrderedAction::Trigger)
-        .unwrap_or_else(|_| unreachable!());
-    let _ = runtime
+        .unwrap_or_else(|error| {
+            unreachable!(
+                "trigger admission failed: {:?}; runtime={:?}; trace={:?}",
+                error.kind(),
+                runtime.status(),
+                runtime.trace().kinds().collect::<Vec<_>>()
+            )
+        });
+    runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "ordered transaction failed: {:?}",
+        runtime.trace().kinds().collect::<Vec<_>>()
+    );
     let records: Vec<_> = runtime.trace().records().collect();
+    assert_application_transaction_order(&records, trigger_sequence);
+}
+
+fn assert_application_transaction_order(
+    records: &[&runenui_runtime::TraceRecord],
+    trigger_sequence: WorkSequence,
+) {
     let transaction = records
         .iter()
         .find(|record| {

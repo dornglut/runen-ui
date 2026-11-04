@@ -127,6 +127,19 @@ mod tests {
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -163,7 +176,9 @@ mod tests {
     #[test]
     fn lineage_uses_only_successfully_recorded_exact_predecessor_state() {
         let style_environment = StyleEnvironment::default();
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let first = publication(&mut runtime, &style_environment, 1.0);
         let second = publication(&mut runtime, &style_environment, 2.0);
         let third = publication(&mut runtime, &style_environment, 3.0);
@@ -197,7 +212,9 @@ mod tests {
     #[test]
     fn reset_forces_full_resync_without_exposing_stale_damage() {
         let style_environment = StyleEnvironment::default();
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let first = publication(&mut runtime, &style_environment, 1.0);
         let successor = publication(&mut runtime, &style_environment, 2.0);
 
@@ -224,7 +241,9 @@ mod tests {
     #[test]
     fn update_plan_exposes_damage_only_for_exact_predecessor() {
         let style_environment = StyleEnvironment::default();
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let first = publication(&mut runtime, &style_environment, 1.0);
         let second = publication(&mut runtime, &style_environment, 2.0);
         let third = publication(&mut runtime, &style_environment, 3.0);
@@ -254,8 +273,12 @@ mod tests {
     #[test]
     fn foreign_surface_never_matches_realized_lineage() {
         let style_environment = StyleEnvironment::default();
-        let mut first_runtime = AppRuntime::<App>::mount(());
-        let mut second_runtime = AppRuntime::<App>::mount(());
+        let mut first_runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
+        let mut second_runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let first = publication(&mut first_runtime, &style_environment, 1.0);
         let foreign = publication(&mut second_runtime, &style_environment, 1.0);
 

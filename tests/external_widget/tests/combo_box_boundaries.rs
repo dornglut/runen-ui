@@ -43,7 +43,45 @@ enum Action {
     Enable,
 }
 struct App;
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let nodes = if matches!(
+            state.mode,
+            Mode::MissingId | Mode::DuplicateKey | Mode::OwnerCollision | Mode::PopupOwnerCollision
+        ) {
+            2
+        } else {
+            7
+        };
+        runenui_core::ProducerBudget::new(nodes, 0)
+            .with_reconciliation(nodes, 0, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Earlier FIFO actions may turn an invalid initial fixture into the
+        // valid seven-node tree before this action reaches the head.
+        Self::producer_budget(7)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(7)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -126,7 +164,8 @@ fn new(mode: Mode) -> AppRuntime<App> {
         reordered: false,
         chosen: 0,
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     app
 }

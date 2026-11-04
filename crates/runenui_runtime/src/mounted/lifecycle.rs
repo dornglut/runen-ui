@@ -5,6 +5,7 @@ use crate::ReconciliationDiagnostic;
 use super::{
     MountedNodeId,
     node::state_is_corrupted,
+    reconcile::ReconciliationApplyError,
     tree::{MountedTree, ReconcileStats},
 };
 
@@ -15,10 +16,10 @@ impl<Action> MountedTree<Action> {
         reason: WidgetUnmountReason,
         path: &str,
         stats: &mut ReconcileStats<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
-    ) {
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
+    ) -> Result<(), ReconciliationApplyError> {
         let Some(children) = self.node(id).map(|node| node.children.clone()) else {
-            return;
+            return Ok(());
         };
         for (position, child) in children.into_iter().enumerate() {
             self.unmount_subtree(
@@ -27,7 +28,7 @@ impl<Action> MountedTree<Action> {
                 &format!("{path}/{position}"),
                 stats,
                 before_unmount,
-            );
+            )?;
         }
 
         let bindings = self
@@ -46,7 +47,7 @@ impl<Action> MountedTree<Action> {
             );
         }
 
-        before_unmount(id);
+        before_unmount(id).map_err(|()| ReconciliationApplyError)?;
         stats.unmounted_owners.push(id.clone());
         let (slot, generation) = self
             .runtime
@@ -56,7 +57,7 @@ impl<Action> MountedTree<Action> {
             let mut context = WidgetUnmountContext::__runtime_new(reason);
             state_is_corrupted(node) || node.widget.unmount(&mut node.state, &mut context).is_err()
         } else {
-            return;
+            return Ok(());
         };
         if mismatch {
             stats
@@ -69,6 +70,7 @@ impl<Action> MountedTree<Action> {
             drop(node);
             stats.unmounted += 1;
         }
+        Ok(())
     }
 
     pub(crate) fn shutdown(&mut self) -> ReconcileStats<Action> {
@@ -77,16 +79,25 @@ impl<Action> MountedTree<Action> {
             return stats;
         }
         if let Some(root) = self.root.take() {
-            let mut before_unmount = |_: &MountedNodeId| {};
+            let mut before_unmount = |_: &MountedNodeId| Ok(());
             self.unmount_subtree(
                 &root,
                 WidgetUnmountReason::RuntimeShutdown,
                 "root",
                 &mut stats,
                 &mut before_unmount,
-            );
+            )
+            .unwrap_or_else(|_| unreachable!("shutdown cannot refuse before-unmount cleanup"));
         }
         self.shutdown = true;
         stats
+    }
+}
+
+// A mounted tree owns its hooks even when runtime construction is refused.
+// Explicit runtime shutdown reaches this same idempotent authority first.
+impl<Action> Drop for MountedTree<Action> {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }

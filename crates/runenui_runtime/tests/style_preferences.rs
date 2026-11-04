@@ -1,3 +1,16 @@
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     Color, EdgeInsets, LogicalLength, NoHostProtocol, StyleEnvironment, StylePreferenceKind,
     StylePreferencePolicy, StylePreferences, StyleProperties, StyleResolutionLayer, UiApp, View,
@@ -8,6 +21,28 @@ use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, Surfac
 struct PreferenceApp;
 
 impl UiApp for PreferenceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -32,7 +67,7 @@ fn publish_initial(runtime: &mut AppRuntime<PreferenceApp>, environment: &StyleE
 
 #[test]
 fn reduced_motion_change_invalidates_style_only_until_motion_properties_exist() {
-    let mut runtime = AppRuntime::<PreferenceApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PreferenceApp>::mount(()));
     let initial = StyleEnvironment::default();
     publish_initial(&mut runtime, &initial);
 
@@ -60,7 +95,7 @@ fn reduced_motion_change_invalidates_style_only_until_motion_properties_exist() 
 
 #[test]
 fn high_contrast_paint_override_invalidates_only_style_and_paint() {
-    let mut runtime = AppRuntime::<PreferenceApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PreferenceApp>::mount(()));
     let initial = StyleEnvironment::default();
     publish_initial(&mut runtime, &initial);
 
@@ -95,7 +130,7 @@ fn high_contrast_paint_override_invalidates_only_style_and_paint() {
 
 #[test]
 fn high_contrast_layout_override_invalidates_every_required_layout_dependent() {
-    let mut runtime = AppRuntime::<PreferenceApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PreferenceApp>::mount(()));
     let initial = StyleEnvironment::default();
     publish_initial(&mut runtime, &initial);
 

@@ -230,6 +230,20 @@ mod tests {
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // One mounted owner, regardless of the number of projected semantic nodes.
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+        }
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+        }
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+        }
+
         type State = usize;
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -331,7 +345,9 @@ mod tests {
     #[test]
     fn normalized_controller_commands_use_canonical_runtime_source_and_modality() {
         let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(128));
-        let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+        let mut runtime = AppRuntime::<App>::mount_with_config(0, config).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let target_id = runenui_core::ElementId::new("accept")
             .unwrap_or_else(|_| unreachable!("fixture authored id is valid"));
         let target = runtime

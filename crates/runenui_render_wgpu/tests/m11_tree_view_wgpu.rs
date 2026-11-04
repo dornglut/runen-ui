@@ -34,6 +34,20 @@ impl ResourceProvider for NoResources {
 }
 struct TreeGpuApp;
 impl UiApp for TreeGpuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 5 mounted owners; event allowance <= 3 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(98, 92).with_reconciliation(5, 5, 5)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(98, 92).with_reconciliation(5, 5, 5)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(98, 92).with_reconciliation(5, 5, 5)
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -63,7 +77,8 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 fn publication(expanded: bool) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
-    let mut app = AppRuntime::<TreeGpuApp>::mount(expanded);
+    let mut app = AppRuntime::<TreeGpuApp>::mount(expanded)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,

@@ -1,6 +1,4 @@
 #![allow(refining_impl_trait)]
-#![allow(clippy::panic)]
-
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
@@ -16,8 +14,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
-    SurfaceBuildContext, TraceConfig, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceScrollControlBindingOutcome, TraceTargetRejection,
+    RuntimeStatus, SurfaceBuildContext, TraceConfig, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceScrollControlBindingOutcome, TraceTargetRejection,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -87,6 +85,22 @@ enum ViewportAction {
 }
 
 impl Widget<ViewportAction> for HitProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -119,6 +133,32 @@ impl Widget<ViewportAction> for HitProbe {
 struct ViewportApp;
 
 impl UiApp for ViewportApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Existing frontier covers scroll/activation and owner declarations;
+        // pointer routing additionally owns the cursor service's two outcomes.
+        runenui_core::ProducerBudget::new(9, 4)
+            .with_reconciliation(2, 2, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = usize;
     type Action = ViewportAction;
     type HostProtocol = NoHostProtocol;
@@ -155,20 +195,19 @@ fn viewport_build(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
 
 #[test]
 fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() {
-    let mut runtime = AppRuntime::<ViewportApp>::mount(0);
+    let mut runtime = AppRuntime::<ViewportApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     let build = viewport_build(&environment);
     let publication = runtime
         .publish_surface(&build)
-        .unwrap_or_else(|error| panic!("scroll viewport publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("scroll viewport publishes: {error:?}"));
 
     let child = node_id(&mut runtime, "viewport.child");
     let viewport = node_id(&mut runtime, "viewport");
-    let child_point =
-        LogicalPoint::new(5.0, 5.0).unwrap_or_else(|_| unreachable!("point is finite"));
-    let blank_point =
-        LogicalPoint::new(35.0, 5.0).unwrap_or_else(|_| unreachable!("point is finite"));
+    let child_point = point(5.0, 5.0);
+    let blank_point = point(35.0, 5.0);
     assert_eq!(
         publication.hit_test_scene().target_at(child_point),
         Some(&child),
@@ -194,7 +233,7 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
             .with_buttons(PointerButtons::new([PointerButton::Primary]))
             .with_changed_button(PointerButton::Primary),
         )
-        .unwrap_or_else(|error| panic!("child pointer down is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("child pointer down is admitted: {error:?}"));
     settle(&mut runtime);
     runtime
         .submit_pointer(
@@ -207,7 +246,7 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
             )
             .with_changed_button(PointerButton::Primary),
         )
-        .unwrap_or_else(|error| panic!("child pointer up is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("child pointer up is admitted: {error:?}"));
     settle(&mut runtime);
     assert_eq!(
         *runtime.state(),
@@ -217,7 +256,7 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
 
     let publication = runtime
         .publish_surface(&build)
-        .unwrap_or_else(|error| panic!("post-activation viewport republishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("post-activation viewport republishes: {error:?}"));
     let wheel = PointerEvent::new(
         PointerId::new(201).unwrap_or_else(|| unreachable!("pointer id is nonzero")),
         PointerDeviceKind::Mouse,
@@ -230,13 +269,13 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
     );
     runtime
         .submit_pointer(wheel)
-        .unwrap_or_else(|error| panic!("blank-area wheel is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("blank-area wheel is admitted: {error:?}"));
     settle(&mut runtime);
     assert_eq!(scroll_offset(&mut runtime, "viewport"), (0.0, 12.0));
 
     let publication = runtime
         .publish_surface(&build)
-        .unwrap_or_else(|error| panic!("shift-wheel viewport republishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("shift-wheel viewport republishes: {error:?}"));
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -252,7 +291,7 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
                     .unwrap_or_else(|_| unreachable!("wheel delta is finite")),
             ),
         )
-        .unwrap_or_else(|error| panic!("shift-wheel is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("shift-wheel is admitted: {error:?}"));
     settle(&mut runtime);
     assert_eq!(
         scroll_offset(&mut runtime, "viewport"),
@@ -261,18 +300,23 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
     );
 }
 
+fn point(x: f32, y: f32) -> LogicalPoint {
+    LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("fixture point is finite"))
+}
+
 #[test]
 fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
     let mut runtime = AppRuntime::<ViewportApp>::mount_with_config(
         0,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     let build = viewport_build(&environment);
     let publication = runtime
         .publish_surface(&build)
-        .unwrap_or_else(|error| panic!("touch viewport publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("touch viewport publishes: {error:?}"));
     let viewport = node_id(&mut runtime, "viewport");
     let pointer_id =
         PointerId::new(202).unwrap_or_else(|| unreachable!("fixture pointer id is nonzero"));
@@ -296,7 +340,7 @@ fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
             .with_buttons(PointerButtons::new([PointerButton::Primary]))
             .with_changed_button(PointerButton::Primary),
         )
-        .unwrap_or_else(|error| panic!("blank-area touch down is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("blank-area touch down is admitted: {error:?}"));
     settle(&mut runtime);
 
     for point in [(29.0, 14.0), (28.0, 13.0)] {
@@ -312,7 +356,7 @@ fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
                 )
                 .with_buttons(PointerButtons::new([PointerButton::Primary])),
             )
-            .unwrap_or_else(|error| panic!("blank-area touch move is admitted: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("blank-area touch move is admitted: {error:?}"));
         settle(&mut runtime);
     }
 
@@ -333,6 +377,22 @@ fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
 struct Spacer;
 
 impl Widget<()> for Spacer {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -347,6 +407,22 @@ struct SnapshotProbe {
 }
 
 impl Widget<()> for SnapshotProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -424,6 +500,34 @@ struct BoundState {
 struct BoundApp;
 
 impl UiApp for BoundApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            BoundAction::ResizeInner
+            | BoundAction::ExpandInnerToContent
+            | BoundAction::EnableInnerScroll
+            | BoundAction::DisableInnerScroll => {
+                runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 5, 0)
+            }
+            BoundAction::ReplaceBound => {
+                runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 4, 1)
+            }
+        }
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = BoundState;
     type Action = BoundAction;
     type HostProtocol = NoHostProtocol;
@@ -505,6 +609,7 @@ fn bound_runtime_with_scrollability(inner_scrollable: bool) -> AppRuntime<BoundA
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
     )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"))
 }
 
 fn bound_runtime() -> AppRuntime<BoundApp> {
@@ -530,7 +635,7 @@ fn submit_scroll(
             SemanticCommand::ScrollControl(request),
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|error| panic!("scroll-control request is admitted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("scroll-control request is admitted: {error:?}"));
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -653,7 +758,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("bound scroll surface publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("bound scroll surface publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     assert_initial_bound_snapshots(&runtime);
@@ -679,7 +784,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     );
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("resized scroll surface publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("resized scroll surface publishes: {error:?}"));
     let accepted_snapshot = last_snapshot(&runtime.state().paint);
     assert_eq!(last_snapshot(&runtime.state().hit), accepted_snapshot);
     assert_eq!(last_snapshot(&runtime.state().semantics), accepted_snapshot);
@@ -729,7 +834,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
 
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("scrolled surface republishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("scrolled surface republishes: {error:?}"));
     submit_scroll(
         &mut runtime,
         bound.clone(),
@@ -762,7 +867,7 @@ fn nested_bound_controls_mutate_independent_existing_scroll_owners() {
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("nested binding fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("nested binding fixture publishes: {error:?}"));
     let inner_control = node_id(&mut runtime, "bound");
     let outer_control = node_id(&mut runtime, "outer.filler");
 
@@ -802,7 +907,7 @@ fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retarg
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("zero-range fixture initially publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("zero-range fixture initially publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     runtime
@@ -819,7 +924,7 @@ fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retarg
     );
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("zero-range fixture republishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("zero-range fixture republishes: {error:?}"));
 
     let snapshot = last_snapshot(&runtime.state().paint);
     assert_eq!(snapshot.maximum_offset().get(), 0.0);
@@ -862,6 +967,26 @@ fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retarg
 struct PerAxisApp;
 
 impl UiApp for PerAxisApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -915,7 +1040,7 @@ fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("stale-metrics fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("stale-metrics fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     runtime
@@ -947,7 +1072,7 @@ fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
 
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("changed scroll metrics republish: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("changed scroll metrics republish: {error:?}"));
     submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
     assert_eq!(
         scroll_offset(&mut runtime, "inner"),
@@ -958,7 +1083,8 @@ fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
 
 #[test]
 fn per_axis_binding_skips_nearer_nonmatching_scroll_owner() {
-    let mut runtime = AppRuntime::<PerAxisApp>::mount(());
+    let mut runtime = AppRuntime::<PerAxisApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     runtime
@@ -967,7 +1093,7 @@ fn per_axis_binding_skips_nearer_nonmatching_scroll_owner() {
             LogicalSize::try_new(40.0, 30.0)
                 .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
         ))
-        .unwrap_or_else(|error| panic!("per-axis fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("per-axis fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "axis.bound");
     runtime
         .submit_command(
@@ -999,6 +1125,26 @@ enum FailMode {
 struct FailApp;
 
 impl UiApp for FailApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = FailMode;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1070,7 +1216,8 @@ fn missing_and_non_scrollable_bindings_fail_closed() {
         let mut runtime = AppRuntime::<FailApp>::mount_with_config(
             mode,
             RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         settle(&mut runtime);
         let environment = StyleEnvironment::default();
         runtime
@@ -1079,7 +1226,7 @@ fn missing_and_non_scrollable_bindings_fail_closed() {
                 LogicalSize::try_new(30.0, 30.0)
                     .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
             ))
-            .unwrap_or_else(|error| panic!("fail-closed fixture publishes: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("fail-closed fixture publishes: {error:?}"));
         let target = node_id(&mut runtime, "fail.target");
         runtime
             .submit_command(
@@ -1105,7 +1252,7 @@ fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallb
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("binding fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("binding fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     runtime
@@ -1145,7 +1292,7 @@ fn newly_nearer_scroll_owner_requires_republication_before_binding_switches() {
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("outer-bound fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("outer-bound fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     runtime
@@ -1179,7 +1326,9 @@ fn newly_nearer_scroll_owner_requires_republication_before_binding_switches() {
 
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("updated nearest-owner publication commits: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("updated nearest-owner publication commits: {error:?}")
+        });
     submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
     assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
     assert_eq!(scroll_offset(&mut runtime, "outer"), (0.0, 0.0));
@@ -1192,7 +1341,7 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("stale-target fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("stale-target fixture publishes: {error:?}"));
     let stale = node_id(&mut runtime, "bound");
 
     runtime
@@ -1234,7 +1383,7 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
 }
 
 #[test]
-fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutation() {
+fn scroll_control_reservation_survives_later_roots_filling_the_waiting_queue() {
     const QUEUE_CAPACITY: usize = 16;
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
@@ -1252,12 +1401,13 @@ fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutat
         RuntimeConfig::default()
             .with_limits(limits)
             .with_trace_config(TraceConfig::new(512)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("queue-pressure fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("queue-pressure fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
     runtime.state().event.borrow_mut().clear();
 
@@ -1283,22 +1433,23 @@ fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutat
             .processed_envelopes(),
         1
     );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
     assert!(
-        runtime.state().event.borrow().is_empty(),
-        "routed admission rejects before the bound widget callback"
+        !runtime.state().event.borrow().is_empty(),
+        "the already admitted command retains its callback reservation"
     );
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+        TraceRecordKind::LogicalScrollOwnerApplied { .. }
+    )));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::Resolved,
+            ..
         }
     )));
-    assert!(!runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::ScrollControlBindingEvaluated { .. }
-            | TraceRecordKind::LogicalScrollOwnerApplied { .. }
-    )));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
 #[cfg(feature = "internal-test-seams")]
@@ -1318,12 +1469,13 @@ fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
         RuntimeConfig::default()
             .with_limits(limits)
             .with_trace_config(TraceConfig::new(256)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("admission fixture publishes: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("admission fixture publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);

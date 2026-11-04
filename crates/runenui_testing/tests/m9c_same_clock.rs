@@ -13,6 +13,19 @@ use runenui_testing::TestHarness;
 struct Probe;
 
 impl Widget<()> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -25,6 +38,21 @@ impl Widget<()> for Probe {
 struct SameClockApp;
 
 impl UiApp for SameClockApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One fixed leaf and its initial mounted-subscription reconciliation.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This leaf produces no routed outputs or work in any reachable state.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -76,7 +104,8 @@ fn opacity(publication: &runenui_runtime::SurfacePublication) -> f32 {
 
 #[test]
 fn repeated_publication_at_one_manual_clock_instant_reuses_the_same_motion_sample() {
-    let mut harness = TestHarness::<SameClockApp>::mount(());
+    let mut harness = TestHarness::<SameClockApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     harness.publish().unwrap_or_else(|_| unreachable!());
     harness
         .advance_time(Duration::from_millis(50))

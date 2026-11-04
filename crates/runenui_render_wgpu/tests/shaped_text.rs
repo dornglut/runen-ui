@@ -27,6 +27,20 @@ fn surface_size() -> LogicalSize {
 
 struct TextApp;
 impl UiApp for TextApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -40,6 +54,20 @@ impl UiApp for TextApp {
 
 struct TransparentTextApp;
 impl UiApp for TransparentTextApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -53,6 +81,20 @@ impl UiApp for TransparentTextApp {
 
 struct TransparentShadowTextApp;
 impl UiApp for TransparentShadowTextApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -181,7 +223,8 @@ fn production_msdf_uses_one_logical_ref_at_multiple_renderer_realizations()
     let Some(mut renderer) = renderer_or_skip()? else {
         return Ok(());
     };
-    let mut runtime = AppRuntime::<TextApp>::mount(());
+    let mut runtime = AppRuntime::<TextApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_font(&mut runtime);
     let low = publish(&mut runtime, RasterScale::new(0.75)?);
     let one = publish(&mut runtime, RasterScale::ONE);
@@ -231,7 +274,8 @@ fn transparent_shaped_text_shadow_uses_retained_outline_across_msdf_realizations
     };
     let provider = ExternalOnlyProvider::default();
 
-    let mut transparent_runtime = AppRuntime::<TransparentTextApp>::mount(());
+    let mut transparent_runtime = AppRuntime::<TransparentTextApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_font(&mut transparent_runtime);
     let transparent = publish(&mut transparent_runtime, RasterScale::ONE);
     let transparent_render = renderer.render_offscreen_publication(&transparent, &provider)?;
@@ -241,7 +285,8 @@ fn transparent_shaped_text_shadow_uses_retained_outline_across_msdf_realizations
         "transparent shaped-text foreground must contribute no visible child color"
     );
 
-    let mut shadowed_runtime = AppRuntime::<TransparentShadowTextApp>::mount(());
+    let mut shadowed_runtime = AppRuntime::<TransparentShadowTextApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_font(&mut shadowed_runtime);
     let low = publish(&mut shadowed_runtime, RasterScale::new(0.75)?);
     let high = publish(&mut shadowed_runtime, RasterScale::new(2.0)?);
@@ -275,7 +320,8 @@ fn retained_publication_retries_after_renderer_realization_loss()
     let Some(mut renderer) = renderer_or_skip()? else {
         return Ok(());
     };
-    let mut runtime = AppRuntime::<TextApp>::mount(());
+    let mut runtime = AppRuntime::<TextApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_font(&mut runtime);
     let publication = publish(&mut runtime, RasterScale::ONE);
     let expected_ref = text_ref(&publication);
@@ -311,7 +357,8 @@ fn production_msdf_pixel_evidence_is_stable_and_small_size_is_covered()
     let Some(mut renderer) = renderer_or_skip()? else {
         return Ok(());
     };
-    let mut runtime = AppRuntime::<TextApp>::mount(());
+    let mut runtime = AppRuntime::<TextApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_font(&mut runtime);
     let small = publish(&mut runtime, RasterScale::new(0.5)?);
     let provider = ExternalOnlyProvider::default();
@@ -388,7 +435,9 @@ fn production_intrinsic_glyph_formats_return_structured_diagnostics()
             runenui_render_wgpu::UnsupportedShapedGlyphKind::Bitmap,
         ),
     ] {
-        let mut runtime = AppRuntime::<TextApp>::mount(());
+        let mut runtime = AppRuntime::<TextApp>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         register_font_bytes(&mut runtime, font_bytes);
         let publication = publish(&mut runtime, RasterScale::ONE);
         let provider = ExternalOnlyProvider::default();

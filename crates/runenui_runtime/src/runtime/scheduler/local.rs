@@ -15,7 +15,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
         let mut visited = HashSet::new();
         let mut polled = 0;
-        while polled < limit && !self.queue.is_full() {
+        while polled < limit {
             let next_task = self
                 .local_tasks
                 .iter()
@@ -78,8 +78,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     TaskReady::Complete(Some(action)) => {
                         let ready =
                             self.record_work_fact(TraceRecordKind::LocalWorkReady, identity);
+                        self.queue_local_task_action(action, ready, generation);
                         self.revoke_generation(generation);
-                        self.queue_callback_action(action, ready);
                     }
                     TaskReady::Complete(None) => {
                         self.record_work_fact(TraceRecordKind::LocalWorkReady, identity);
@@ -102,7 +102,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 SubscriptionPoll::Item(action) => {
                     polled += 1;
                     let ready = self.record_work_fact(TraceRecordKind::LocalWorkReady, identity);
-                    self.queue_callback_action(action, ready);
+                    self.queue_callback_action_for_work(action, ready, generation);
                 }
                 SubscriptionPoll::Closed => {
                     polled += 1;

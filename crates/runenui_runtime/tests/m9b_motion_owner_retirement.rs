@@ -20,6 +20,29 @@ struct RetirementState {
 struct RetirementApp;
 
 impl UiApp for RetirementApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 3 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = RetirementState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -109,7 +132,8 @@ fn observe(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpRepo
 
 #[test]
 fn retiring_one_owner_preserves_another_owners_delayed_motion_deadline() {
-    let mut runtime = AppRuntime::<RetirementApp>::mount(RetirementState { show_early: true });
+    let mut runtime = AppRuntime::<RetirementApp>::mount(RetirementState { show_early: true })
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let initial_publication = publish(&mut runtime);
     assert_eq!(initial_publication.frame().nodes().len(), 3);
 

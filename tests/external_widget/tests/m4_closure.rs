@@ -58,6 +58,22 @@ struct ClosureAncestor {
 }
 
 impl Widget<Action> for ClosureAncestor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -87,6 +103,24 @@ struct ClosureWidget {
 }
 
 impl Widget<ChildAction> for ClosureWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(3)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -111,7 +145,7 @@ impl Widget<ChildAction> for ClosureWidget {
                 if context.phase() == EventPhase::Target
                     && pointer.phase() == PointerPhase::Down =>
             {
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
             }
             UiEvent::Pointer(pointer)
                 if context.phase() == EventPhase::Target
@@ -146,8 +180,8 @@ impl Widget<ChildAction> for ClosureWidget {
     ) -> WidgetActivationOutput<ChildAction> {
         *state += 1;
         context.invalidate(WidgetInvalidation::PAINT);
-        context.emit(ChildAction::Auxiliary);
-        context.local_task(async { Some(ChildAction::WorkCompleted) });
+        let _ = context.try_emit(ChildAction::Auxiliary);
+        let _ = context.try_local_task(async { Some(ChildAction::WorkCompleted) });
         WidgetActivationOutput::changed_with_action(ChildAction::Activated)
     }
 
@@ -170,6 +204,33 @@ impl Widget<ChildAction> for ClosureWidget {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Mount the root and child once; neither declares initial effects or subscriptions.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Each child action updates the two retained owners and emits no further
+        // actions, subscriptions, or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Routing can collect three activation actions and start one local task;
+        // focus/input-method publication can also require one framework service.
+        runenui_core::ProducerBudget::new(14, 10)
+            .with_reconciliation(0, 2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -213,18 +274,27 @@ fn routed_kind(event: &UiEvent) -> Option<RoutedKind> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(
+        report.is_quiescent(),
+        "status={:?}; processed={}; remaining={}; trace={:?}",
+        runtime.status(),
+        report.processed_envelopes(),
+        report.remaining_queued_envelopes(),
         runtime
-            .pump(PumpBudget::new(
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-            ))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .is_quiescent()
+            .trace()
+            .records()
+            .map(|record| format!("{:?}", record.kind()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -336,7 +406,8 @@ fn m4_close_02_downstream_widget_composes_public_m4_protocols() {
     let mut runtime = AppRuntime::<App>::mount(State {
         facts: Rc::clone(&facts),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let target = target(&mut runtime);
 

@@ -586,6 +586,7 @@ pub enum TraceRoutedIntegrityFailure {
     EventBridgeMismatch,
     CallbackBridgeFailure,
     OutputAllowanceExceeded,
+    ProducerViolation(runenui_core::ProducerContractViolation),
     SemanticDefaultFailure,
     CommitInvariantFailure,
 }
@@ -603,7 +604,9 @@ pub enum TraceTargetRejection {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraceSemanticActionRejection {
+    WorkCapacity,
     Closed,
+    InvalidProducerProfile,
     Terminal,
     ForeignSurface,
     WrongSurface,
@@ -694,6 +697,7 @@ pub enum TraceSurfaceSnapshotKind {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraceSurfaceRejection {
+    WorkCapacity,
     ForeignRuntime,
     ForeignSurface,
     RetiredGeneration,
@@ -705,6 +709,7 @@ pub enum TraceSurfaceRejection {
     StaleTarget,
     MissingTarget,
     QueueFull,
+    InvalidProducerProfile,
     RuntimeClosed,
     RuntimeTerminal,
     WorkSequenceExhausted,
@@ -721,6 +726,7 @@ pub enum TraceRoutedAdmissionRejection {
     SendTasks,
     Timers,
     FrameworkServices,
+    HostRequests,
     WorkSequenceExhausted,
     WorkGenerationExhausted,
     ReconciliationGenerationExhausted,

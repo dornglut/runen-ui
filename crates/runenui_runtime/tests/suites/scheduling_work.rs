@@ -1,5 +1,7 @@
 #[path = "../mounted_work_output.rs"]
 mod mounted_work_output;
+#[path = "../producer_work_residency.rs"]
+mod producer_work_residency;
 #[path = "../pump_scheduler.rs"]
 mod pump_scheduler;
 #[path = "../queue_pump.rs"]

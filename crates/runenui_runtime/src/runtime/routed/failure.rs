@@ -49,7 +49,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             | TraceRoutedAdmissionRejection::LocalTasks
             | TraceRoutedAdmissionRejection::SendTasks
             | TraceRoutedAdmissionRejection::Timers
-            | TraceRoutedAdmissionRejection::FrameworkServices => None,
+            | TraceRoutedAdmissionRejection::FrameworkServices
+            | TraceRoutedAdmissionRejection::HostRequests => None,
         };
         if let Some(reason) = terminal {
             self.enter_terminal_with_parent(reason, 0, failure_parent);
@@ -106,7 +107,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             current_target,
             facts.origin,
         );
-        self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, failure_parent);
+        let reason = match failure {
+            TraceRoutedIntegrityFailure::ProducerViolation(cause) => {
+                RuntimeTerminalReason::ProducerContractViolation(cause)
+            }
+            _ => RuntimeTerminalReason::Poisoned,
+        };
+        self.enter_terminal_with_parent(reason, 0, failure_parent);
         RoutedFailureLineage::new(failure_parent)
     }
 
@@ -135,7 +142,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             current_target,
             facts.origin,
         );
-        self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, failure_parent);
+        let reason = match failure {
+            TraceRoutedIntegrityFailure::ProducerViolation(cause) => {
+                RuntimeTerminalReason::ProducerContractViolation(cause)
+            }
+            _ => RuntimeTerminalReason::Poisoned,
+        };
+        self.enter_terminal_with_parent(reason, 0, failure_parent);
         RoutedFailureLineage::new(failure_parent)
     }
 }

@@ -10,6 +10,33 @@ use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, Surfac
 
 struct ScrollTreeApp;
 impl UiApp for ScrollTreeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // scroll viewport + tree root + three items and their text nodes
+        runenui_core::ProducerBudget::new(8, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(8, 0, 8)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The event route (scroll, tree, and item) admits five callback
+        // outputs. Four focus notifications can visit all ten event-output
+        // credits across the eight mounted owners (40 total). Directional
+        // focus also reserves one scroll-reveal default output.
+        runenui_core::ProducerBudget::new(46, 46).with_application_outputs(0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -82,7 +109,8 @@ fn command(
 }
 #[test]
 fn tree_view_focus_navigation_reveals_from_generic_scroll_container() {
-    let mut runtime = AppRuntime::<ScrollTreeApp>::mount(());
+    let mut runtime = AppRuntime::<ScrollTreeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
         .publish_surface(&SurfaceBuildContext::tight(

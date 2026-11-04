@@ -316,7 +316,7 @@ impl<Action> SplitterWidget<Action> {
         if request_admissible(state, request)
             && let Some(callback) = self.on_resize.as_mut()
         {
-            context.emit(callback(request));
+            let _ = context.try_emit(callback(request));
         }
     }
 }
@@ -364,7 +364,7 @@ impl<Action> SplitterWidget<Action> {
         }
         state.drag = None;
         state.cancel_drag = false;
-        context.release_pointer_capture();
+        let _ = context.try_release_pointer_capture();
         context.prevent_default();
         context.stop_propagation();
         true
@@ -372,6 +372,23 @@ impl<Action> SplitterWidget<Action> {
 }
 
 impl<Action> Widget<Action> for SplitterWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(5),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = SplitterState;
 
     fn create_state(&self) -> Self::State {
@@ -492,7 +509,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                 }
                 state.drag = Some(pointer.pointer_id());
                 state.cancel_drag = false;
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
                 context.prevent_default();
                 context.stop_propagation();
                 WidgetEventOutput::changed()
@@ -501,7 +518,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                 if !usable_extent(context) {
                     state.drag = None;
                     state.cancel_drag = false;
-                    context.release_pointer_capture();
+                    let _ = context.try_release_pointer_capture();
                     return WidgetEventOutput::changed();
                 }
                 let delta = pointer.movement_delta();

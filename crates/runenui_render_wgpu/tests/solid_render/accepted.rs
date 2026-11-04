@@ -34,6 +34,19 @@ struct SceneFixture {
 }
 
 impl Widget<Vec<PaintContributionItem>> for SceneFixture {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = Vec<PaintContributionItem>;
 
     fn create_state(&self) -> Self::State {
@@ -55,6 +68,20 @@ impl Widget<Vec<PaintContributionItem>> for SceneFixture {
 struct FixtureApp;
 
 impl UiApp for FixtureApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = Vec<PaintContributionItem>;
     type Action = Vec<PaintContributionItem>;
     type HostProtocol = NoHostProtocol;
@@ -76,6 +103,19 @@ struct GroupSceneFixture {
 }
 
 impl Widget<Vec<PaintContributionEntry>> for GroupSceneFixture {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = Vec<PaintContributionEntry>;
 
     fn create_state(&self) -> Self::State {
@@ -97,6 +137,20 @@ impl Widget<Vec<PaintContributionEntry>> for GroupSceneFixture {
 struct GroupFixtureApp;
 
 impl UiApp for GroupFixtureApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = Vec<PaintContributionEntry>;
     type Action = Vec<PaintContributionEntry>;
     type HostProtocol = NoHostProtocol;
@@ -216,7 +270,8 @@ fn image_item(resource: ResourceRef, destination: LogicalRect) -> PaintContribut
 }
 
 fn publication(items: Vec<PaintContributionItem>) -> PaintPublication {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(items);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(items)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
         .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
@@ -232,7 +287,8 @@ fn publication(items: Vec<PaintContributionItem>) -> PaintPublication {
 }
 
 fn grouped_publication(entries: Vec<PaintContributionEntry>) -> PaintPublication {
-    let mut runtime = AppRuntime::<GroupFixtureApp>::mount(entries);
+    let mut runtime = AppRuntime::<GroupFixtureApp>::mount(entries)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
         .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));

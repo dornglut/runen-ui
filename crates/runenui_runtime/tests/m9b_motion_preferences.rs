@@ -21,6 +21,29 @@ struct PreservedApp;
 macro_rules! timeline_app {
     ($app:ty, $strategy:expr) => {
         impl UiApp for $app {
+            fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+                // The motion fixture has at most 1 mounted owners; timelines
+                // do not introduce scheduler tasks or application output.
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(1, 0, 1)
+                    .with_subscriptions(0, 0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+            }
+
+            fn action_producer_budget(
+                _state: &Self::State,
+                _action: &Self::Action,
+            ) -> runenui_core::ProducerBudget {
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(1, 1, 1)
+                    .with_subscriptions(0, 0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+            }
+
+            fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+                runenui_core::ProducerBudget::new(1, 0)
+            }
+
             type State = ();
             type Action = ();
             type HostProtocol = NoHostProtocol;
@@ -104,7 +127,8 @@ fn high_contrast_opacity_override() -> StyleEnvironment {
 
 #[test]
 fn hold_initial_accrues_no_hidden_time_and_restarts_when_reduced_motion_lifts() {
-    let mut runtime = AppRuntime::<HoldInitialApp>::mount(());
+    let mut runtime = AppRuntime::<HoldInitialApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let reduced = reduced_motion();
 
     let initial = publish(&mut runtime, &reduced);
@@ -133,7 +157,8 @@ fn hold_initial_accrues_no_hidden_time_and_restarts_when_reduced_motion_lifts() 
 
 #[test]
 fn snap_to_end_commits_the_terminal_sample_without_later_restart() {
-    let mut runtime = AppRuntime::<SnapToEndApp>::mount(());
+    let mut runtime = AppRuntime::<SnapToEndApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let reduced = reduced_motion();
 
     let snapped = publish(&mut runtime, &reduced);
@@ -156,7 +181,8 @@ fn snap_to_end_commits_the_terminal_sample_without_later_restart() {
 
 #[test]
 fn high_contrast_suppression_keeps_the_underlying_timeline_on_the_same_clock() {
-    let mut runtime = AppRuntime::<PreservedApp>::mount(());
+    let mut runtime = AppRuntime::<PreservedApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let high_contrast = high_contrast_opacity_override();
 
     let suppressed = publish(&mut runtime, &high_contrast);

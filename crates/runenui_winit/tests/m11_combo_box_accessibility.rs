@@ -16,6 +16,20 @@ const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-
 
 struct SelectApp;
 impl UiApp for SelectApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This constant closed tree has its owner and label plus one request/default output.
+        runenui_core::ProducerBudget::new(5, 2).with_reconciliation(2, 2, 2)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 2).with_reconciliation(2, 2, 2)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 2).with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -42,6 +56,26 @@ impl UiApp for SelectApp {
 
 struct EditableApp;
 impl UiApp for EditableApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The open editor/presentation/viewport/list and two options have six mounted owners.
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -111,7 +145,8 @@ fn publish<App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol>>(
 
 #[test]
 fn actual_collapsed_select_only_combo_maps_current_selected_value_to_accesskit() {
-    let mut runtime = AppRuntime::<SelectApp>::mount(());
+    let mut runtime = AppRuntime::<SelectApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publish(&mut runtime);
     assert!(
         publication
@@ -146,7 +181,8 @@ fn actual_collapsed_select_only_combo_maps_current_selected_value_to_accesskit()
 
 #[test]
 fn actual_editable_combo_maps_one_m10_owner_and_exact_active_option_to_accesskit() {
-    let mut runtime = AppRuntime::<EditableApp>::mount(());
+    let mut runtime = AppRuntime::<EditableApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publish(&mut runtime);
     let snapshot = publication.semantic_publication().snapshot();
     assert_eq!(
@@ -228,4 +264,47 @@ fn actual_editable_combo_maps_one_m10_owner_and_exact_active_option_to_accesskit
         .unwrap_or_else(|| unreachable!("native active Option projected"));
     assert_eq!(active_node.1.role(), Role::ListBoxOption);
     assert_eq!(active_node.1.label(), Some("Alpha"));
+}
+
+#[test]
+fn select_combo_expansion_request_queues_one_application_action_with_its_own_budget() {
+    use runenui_core::{CommandOrigin, SemanticCommand};
+    use runenui_runtime::{RuntimeStatus, TraceRecordKind};
+
+    let mut runtime = AppRuntime::<SelectApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
+    let _ = publish(&mut runtime);
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "access.select.owner")
+        })
+        .unwrap_or_else(|| unreachable!("the current ComboBox owner is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::Expand,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|error| {
+            unreachable!("the request fits its complete declared frontier: {error}")
+        });
+    let _ = runtime
+        .pump(PumpBudget::new(64, 64, 64, 64))
+        .unwrap_or_else(|_| unreachable!("bounded request processing is observed"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+            .count(),
+        1,
+        "Expand must enqueue exactly one application-owned request"
+    );
 }

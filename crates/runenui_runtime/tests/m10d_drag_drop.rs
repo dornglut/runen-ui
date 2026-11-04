@@ -35,6 +35,34 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The root row and its two drop-area children each have an initial
+        // mounted-owner subscription reconciliation and emit no initial work.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two event producers: four focus visits each, one ordinary visit and
+        // one boundary visit. Cursor and drag reply retain two credits each;
+        // the source also protects its required continuation ingress.
+        runenui_core::ProducerBudget::new(15, 12)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -74,6 +102,24 @@ struct DropArea {
 }
 
 impl Widget<()> for DropArea {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            // Capture and drag acceptance occur in distinct event families.
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -88,7 +134,7 @@ impl Widget<()> for DropArea {
             UiEvent::Pointer(pointer)
                 if self.capture_on_down && pointer.phase() == PointerPhase::Down =>
             {
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
             }
             UiEvent::DragDrop(drop) => {
                 self.observations.borrow_mut().push(DropObservation {
@@ -99,7 +145,7 @@ impl Widget<()> for DropArea {
                     physical_target: context.physical_target().cloned(),
                 });
                 if self.accept_drop && drop.phase() == DragDropPhase::Drop {
-                    context.accept_drag_drop();
+                    let _ = context.try_accept_drag_drop();
                 }
             }
             _ => {}
@@ -146,8 +192,10 @@ fn harness_with_config(accept_drop: bool, config: Option<RuntimeConfig>) -> Harn
         accept_drop,
     };
     let mut runtime = match config {
-        Some(config) => AppRuntime::<App>::mount_with_config(state, config),
-        None => AppRuntime::<App>::mount(state),
+        Some(config) => AppRuntime::<App>::mount_with_config(state, config)
+            .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}")),
+        None => AppRuntime::<App>::mount(state)
+            .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}")),
     };
     let style = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)

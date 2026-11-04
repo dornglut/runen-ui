@@ -75,8 +75,9 @@ const fn keyboard_event(
     )
 }
 
-fn main() {
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+fn main() -> Result<(), runenui_runtime::InitialAdmissionError<crate::app::CounterAppState>> {
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))?;
     settle_initial_work(&mut runtime);
 
     print_debug_surface("counter.surface.initial", &mut runtime);
@@ -149,10 +150,11 @@ fn main() {
 
     print_debug_surface("counter.surface.reset", &mut runtime);
 
-    let count = runtime.state().count;
+    let count = runtime.state().counter.count;
     let trace_events = runtime.trace().len();
 
     println!("counter.count={count} trace_events={trace_events}");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -171,7 +173,11 @@ mod tests {
     use crate::{authored_id, debug_surface, keyboard_event, settle_initial_work};
 
     fn mounted_counter(counter: Counter) -> AppRuntime<CounterApp> {
-        let mut runtime = AppRuntime::<CounterApp>::mount(counter);
+        let mut runtime =
+            AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(counter))
+                .unwrap_or_else(|error| {
+                    unreachable!("fixture initial admission must succeed: {error}")
+                });
         settle_initial_work(&mut runtime);
         runtime
     }
@@ -277,15 +283,15 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves the live reset target"));
-        assert_eq!(runtime.state(), &Counter { count: 10 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 10 });
         let _ = runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        assert_eq!(runtime.state(), &Counter { count: 0 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 0 });
         assert!(
-            published_names(runtime.into_state())
+            published_names(runtime.into_state().counter)
                 .iter()
                 .any(|name| name == "Counter")
         );
@@ -303,7 +309,7 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("automation resolves live increment target"));
         }
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
         let _ = runtime
             .pump(PumpBudget::new(
                 (WIN_COUNT * 2) as usize,
@@ -314,9 +320,9 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        assert_eq!(runtime.state(), &Counter { count: 10 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 10 });
         assert!(
-            published_names(runtime.into_state())
+            published_names(runtime.into_state().counter)
                 .iter()
                 .any(|name| name == "You win")
         );
@@ -362,11 +368,11 @@ mod tests {
                 input,
             ))
             .unwrap_or_else(|_| unreachable!("the displayed up is accepted"));
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
 
         settle_initial_work(&mut runtime);
 
-        assert_eq!(runtime.state(), &Counter { count: 1 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 1 });
     }
 
     #[test]
@@ -400,9 +406,9 @@ mod tests {
                 .submit_keyboard(event)
                 .unwrap_or_else(|_| unreachable!("focused raw keyboard event is accepted"));
         }
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
         settle_initial_work(&mut runtime);
-        assert_eq!(runtime.state(), &Counter { count: 2 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 2 });
     }
 
     #[test]
@@ -412,13 +418,13 @@ mod tests {
         runtime
             .submit_action(CounterAction::Increment)
             .unwrap_or_else(|_| unreachable!());
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
         let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        assert_eq!(runtime.state(), &Counter { count: 1 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 1 });
     }
 
     #[test]
@@ -456,7 +462,7 @@ mod tests {
             runtime.status(),
             RuntimeStatus::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
         );
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(runtime.reconciliation_report(), &report);
         assert_eq!(
@@ -564,7 +570,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        assert_eq!(runtime.state(), &Counter { count: 1 });
+        assert_eq!(&runtime.state().counter, &Counter { count: 1 });
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
@@ -605,6 +611,6 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        assert_eq!(runtime.state(), &Counter::new());
+        assert_eq!(&runtime.state().counter, &Counter::new());
     }
 }

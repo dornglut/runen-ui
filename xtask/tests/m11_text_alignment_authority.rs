@@ -30,7 +30,8 @@ fn final_taffy_placement_is_shared_by_text_consumers() {
     assert!(LAYOUT.contains("self.final_text_origins[index]"));
     assert!(LAYOUT.contains("baselines = text_baselines(artifact, placed_top)"));
     assert!(PLANNING.contains("text_origins,"));
-    assert!(CACHE.contains(".text_origins\n            .get(position)"));
+    let normalized_cache = CACHE.replace("\r\n", "\n");
+    assert!(normalized_cache.contains(".text_origins\n            .get(position)"));
     assert!(PAINT.contains("layout.text_origins[mounted_preorder]"));
     assert!(DISPLAYED.contains("self.cache.layout.text_origins.get(position)"));
     assert!(!PAINT.contains("content_width - artifact.width"));

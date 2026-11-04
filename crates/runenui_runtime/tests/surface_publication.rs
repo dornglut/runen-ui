@@ -54,6 +54,28 @@ fn structural_leaf(name: &'static str, authored: &'static str) -> Element<Struct
 }
 
 impl UiApp for StructuralApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 6 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 6, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(6, 6, 6)
+    }
+
     type State = Structure;
     type Action = StructureAction;
     type HostProtocol = NoHostProtocol;
@@ -170,7 +192,8 @@ fn warm_and_change(
     AppRuntime<StructuralApp>,
     runenui_runtime::SurfacePublication,
 ) {
-    let mut runtime = AppRuntime::<StructuralApp>::mount(initial);
+    let mut runtime = AppRuntime::<StructuralApp>::mount(initial)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let _ = publish(
         &mut runtime,
@@ -259,6 +282,30 @@ fn warmed_nested_reorder_and_removal_follow_current_mounted_preorder() {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -285,7 +332,8 @@ impl UiApp for App {
 
 #[test]
 fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let publication = publish(&mut runtime, &context);
@@ -359,6 +407,28 @@ struct SetCommonFields(CommonFields);
 struct CommonFieldsApp;
 
 impl UiApp for CommonFieldsApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = CommonFields;
     type Action = SetCommonFields;
     type HostProtocol = NoHostProtocol;
@@ -451,7 +521,8 @@ fn warm_common_fields(
     runenui_runtime::SurfacePublication,
     Vec<MountedIdentity>,
 ) {
-    let mut runtime = AppRuntime::<CommonFieldsApp>::mount(initial);
+    let mut runtime = AppRuntime::<CommonFieldsApp>::mount(initial)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime
         .register_text_font_bytes(CANTARELL.to_vec())
         .unwrap_or_else(|_| unreachable!("controlled text fixture is registerable"));
@@ -501,7 +572,8 @@ fn assert_common_phases(runtime: &AppRuntime<CommonFieldsApp>, expected: &[Surfa
 
 #[test]
 fn public_surface_publication_exposes_finite_shaped_text_item_bounds() {
-    let mut runtime = AppRuntime::<CommonFieldsApp>::mount(CommonFields::Padding4);
+    let mut runtime = AppRuntime::<CommonFieldsApp>::mount(CommonFields::Padding4)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime
         .register_text_font_bytes(CANTARELL.to_vec())
         .unwrap_or_else(|_| unreachable!("controlled text fixture is registerable"));
@@ -819,6 +891,29 @@ fn equivalent_common_authored_fields_execute_no_publication_phase() {
 struct TokenApp;
 
 impl UiApp for TokenApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -845,7 +940,8 @@ fn token_padding(publication: &runenui_runtime::SurfacePublication) -> Option<Ed
 
 #[test]
 fn different_token_sets_with_the_same_revision_never_alias() {
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let mut first = StyleTokens::new();
     first
         .define_spacing(
@@ -907,7 +1003,8 @@ fn divergent_clones_follow_exact_current_token_content() {
     assert_eq!(left.revision(), right.revision());
     let left = StyleEnvironment::from_tokens(left);
     let right = StyleEnvironment::from_tokens(right);
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&left, LayoutConstraints::unbounded()),
@@ -937,7 +1034,8 @@ fn equal_token_content_can_reuse_the_warmed_publication() {
     }
     let first = StyleEnvironment::from_tokens(first);
     let second = StyleEnvironment::from_tokens(second);
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let first_publication = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
@@ -974,7 +1072,8 @@ fn color_only_token_change_executes_style_and_paint_without_layout() {
         .unwrap_or_else(|_| unreachable!());
     let first = StyleEnvironment::from_tokens(first);
     let second = StyleEnvironment::from_tokens(second);
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let before = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
@@ -1036,7 +1135,8 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
     assert_eq!(first.revision(), second.revision());
     let first = StyleEnvironment::from_tokens(first);
     let second = StyleEnvironment::from_tokens(second);
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
@@ -1053,7 +1153,8 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
 
 #[test]
 fn style_token_revision_invalidates_resolved_padding_and_layout() {
-    let mut runtime = AppRuntime::<TokenApp>::mount(());
+    let mut runtime = AppRuntime::<TokenApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let mut tokens = StyleTokens::new();
     let first_environment = StyleEnvironment::from_tokens(tokens.clone());
     let first = publish(

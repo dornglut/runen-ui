@@ -146,6 +146,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let was_stopped = transaction.propagation_stopped;
         let was_prevented = transaction.default_prevented;
         let subscription_credit = transaction.subscription_credit(current);
+        let remaining_outputs = transaction.remaining_outputs;
         #[cfg(feature = "internal-test-seams")]
         if self.test_seams.routed_callback_bridge_failure {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
@@ -209,7 +210,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ),
         }
         .map_err(|_| TraceRoutedIntegrityFailure::CallbackBridgeFailure)?;
-        transaction.remaining_outputs = invocation.output.remaining_outputs;
+        let coalesced_subscription_credit =
+            usize::from(invocation.output.subscription_invalidation && subscription_credit > 0);
+        let charged_outputs = invocation
+            .output
+            .used_outputs
+            .checked_sub(coalesced_subscription_credit)
+            .ok_or(TraceRoutedIntegrityFailure::OutputAllowanceExceeded)?;
+        transaction.remaining_outputs = remaining_outputs
+            .checked_sub(charged_outputs)
+            .ok_or(TraceRoutedIntegrityFailure::OutputAllowanceExceeded)?;
         transaction.propagation_stopped = invocation.output.propagation_stopped;
         if matches!(
             event,
@@ -227,6 +237,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction.default_prevented = invocation.output.default_prevented;
         if invocation.output.accepted_drag_drop {
             transaction.drag_drop_acceptor = Some(current.clone());
+        }
+        if let Some(cause) = invocation.output.producer_violation {
+            return Err(TraceRoutedIntegrityFailure::ProducerViolation(cause));
         }
         if invocation.output.overflowed {
             return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
@@ -364,11 +377,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(current),
                 transaction.origin,
             );
-        } else if !subscription_invalidation && subscription_credit == 1 {
-            transaction.remaining_outputs = transaction
-                .remaining_outputs
-                .checked_sub(1)
-                .unwrap_or_else(|| unreachable!("unused coalescing credit remains"));
         }
     }
 

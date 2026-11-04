@@ -40,7 +40,8 @@ fn target<App: UiApp>(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeI
 }
 
 fn focused<App: UiApp>(state: App::State, config: RuntimeConfig) -> AppRuntime<App> {
-    let mut runtime = AppRuntime::<App>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(state, config)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime
         .pump(FULL)
         .unwrap_or_else(|_| unreachable!("initial work"));
@@ -51,7 +52,7 @@ fn focused<App: UiApp>(state: App::State, config: RuntimeConfig) -> AppRuntime<A
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("focus admission"));
+        .unwrap_or_else(|error| unreachable!("focus admission: {:?}", error.kind()));
     runtime
         .pump(FULL)
         .unwrap_or_else(|_| unreachable!("focus commit"));
@@ -107,6 +108,22 @@ enum CompositionObservation {
 struct CompositionProbe(Rc<RefCell<Vec<CompositionObservation>>>);
 
 impl Widget<()> for CompositionProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn text_input(&self, (): &()) -> WidgetTextInput {
@@ -137,6 +154,28 @@ impl Widget<()> for CompositionProbe {
 
 struct CompositionApp;
 impl UiApp for CompositionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Source and lifetime continuation coexist.
+        runenui_core::ProducerBudget::new(2, 0)
+    }
+
     type State = Rc<RefCell<Vec<CompositionObservation>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -192,7 +231,7 @@ fn admitted_composition_update_becomes_stale_without_native_cancellation_or_reta
                 SemanticCommand::RequestFocus,
                 CommandOrigin::programmatic(),
             )
-            .unwrap_or_else(|_| unreachable!("later focus admission"));
+            .unwrap_or_else(|error| unreachable!("later focus admission: {:?}", error.kind()));
         let update = runtime
             .submit_composition_update(
                 start.generation().clone(),
@@ -267,8 +306,28 @@ fn admitted_composition_update_becomes_stale_without_native_cancellation_or_reta
 #[derive(Debug)]
 struct ActionProbe {
     overflow: bool,
+    event_budget: usize,
 }
 impl Widget<u8> for ActionProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => {
+                runenui_core::WidgetProducerBudget::new(self.event_budget)
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn event(
@@ -278,10 +337,10 @@ impl Widget<u8> for ActionProbe {
         context: &mut EventContext<'_, u8>,
     ) -> WidgetEventOutput {
         if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
-            context.emit(1);
+            let _ = context.try_emit(1);
             if self.overflow {
                 context.claim_host_input();
-                context.emit(2);
+                let _ = context.try_emit(2);
             }
         }
         WidgetEventOutput::none()
@@ -290,15 +349,39 @@ impl Widget<u8> for ActionProbe {
 
 struct CausalApp;
 impl UiApp for CausalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(10, 10).with_reconciliation(1, 0, 1)
+    }
+
     type State = usize;
     type Action = u8;
     type HostProtocol = NoHostProtocol;
     fn root(state: &usize) -> impl View<u8> {
         if *state == 0 {
-            Element::new(ActionProbe { overflow: false })
-                .id("probe")
-                .key("probe")
-                .focusable(true)
+            Element::new(ActionProbe {
+                overflow: false,
+                event_budget: 2,
+            })
+            .id("probe")
+            .key("probe")
+            .focusable(true)
         } else {
             text("application removed the focused widget")
                 .id("replacement")
@@ -436,16 +519,54 @@ fn native_settlement_precedes_application_action_and_focus_revocation_across_bou
     }
 }
 
+const fn callback_overrun_reason() -> RuntimeTerminalReason {
+    RuntimeTerminalReason::ProducerContractViolation(runenui_core::ProducerContractViolation {
+        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+        phase: runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event),
+        component: runenui_core::BudgetComponent::Outputs,
+        declared: 1,
+        attempted: Some(2),
+    })
+}
+
 struct OverflowApp;
 impl UiApp for OverflowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // Focus is admitted while this widget has no event output. A bounded
+        // app action then raises its declared event allowance to one; the
+        // keyboard callback deliberately emits two to exercise fail-closed
+        // overrun handling under the one-output transaction limit.
+        runenui_core::ProducerBudget::new(1, usize::from(*state != 0))
+    }
+
     type State = usize;
     type Action = u8;
     type HostProtocol = NoHostProtocol;
-    fn root(_: &usize) -> impl View<u8> {
-        Element::new(ActionProbe { overflow: true })
-            .id("probe")
-            .key("probe")
-            .focusable(true)
+    fn root(state: &usize) -> impl View<u8> {
+        Element::new(ActionProbe {
+            overflow: *state != 0,
+            event_budget: usize::from(*state != 0),
+        })
+        .id("probe")
+        .key("probe")
+        .focusable(true)
     }
     fn update(state: &mut usize, action: u8) {
         *state += usize::from(action);
@@ -459,6 +580,17 @@ fn callback_poison_aborts_only_reached_input_and_retires_pending_receipts_once()
             .with_limits(RuntimeLimits::default().with_transaction_outputs(1))
             .with_trace_config(TraceConfig::new(trace_capacity));
         let mut runtime = focused::<OverflowApp>(0, config);
+        runtime.submit_action(1).unwrap_or_else(|_| {
+            unreachable!("bounded action enables the declared-overrun callback")
+        });
+        runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("fixture event profile transition"));
+        assert_eq!(
+            runtime.state(),
+            &1,
+            "overrun behavior is enabled before the poisoned input"
+        );
         let scope = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("scope"))
@@ -476,11 +608,15 @@ fn callback_poison_aborts_only_reached_input_and_retires_pending_receipts_once()
         assert_eq!(batch.processed_through(), Some(reached.sequence()));
         assert_eq!(batch.report().processed_envelopes(), 1);
         assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
-        assert_eq!(runtime.state(), &0, "neither provisional action commits");
+        assert_eq!(
+            runtime.state(),
+            &1,
+            "the overrun input action does not commit"
+        );
         assert!(
             matches!(batch.ordered_records(), [InputArbitrationRecord::OwnershipChanged(_), InputArbitrationRecord::InputSettled(input), InputArbitrationRecord::ScopeRetired(retired)]
-            if input.sequence() == reached.sequence() && retired.scope() == &scope
-                && retired.reason() == InputScopeRetirementReason::Terminal(RuntimeTerminalReason::Poisoned))
+                        if input.sequence() == reached.sequence() && retired.scope() == &scope
+                            && retired.reason() == InputScopeRetirementReason::Terminal(callback_overrun_reason()))
         );
         let settled = settlements(&batch);
         assert_eq!(settled.len(), 1);
@@ -501,7 +637,7 @@ fn callback_poison_aborts_only_reached_input_and_retires_pending_receipts_once()
         assert_ne!(settled[0].sequence(), pending.sequence());
         assert_eq!(
             batch.final_ownership().status(),
-            RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            RuntimeStatus::Terminal(callback_overrun_reason())
         );
         if trace_capacity == 512 {
             assert!(

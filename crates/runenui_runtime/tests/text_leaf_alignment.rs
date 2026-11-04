@@ -36,6 +36,19 @@ struct DownstreamLeaf {
 }
 
 impl Widget<()> for DownstreamLeaf {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -50,6 +63,34 @@ impl Widget<()> for DownstreamLeaf {
 }
 
 impl UiApp for AlignmentApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Each alignment case mounts exactly one leaf owner.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let budget = match state.kind {
+            Kind::Button => runenui_core::ProducerBudget::new(5, 5),
+            Kind::Plain | Kind::Downstream(..) => runenui_core::ProducerBudget::new(1, 0),
+        };
+        budget
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = Case;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -105,7 +146,8 @@ fn publish(
         label,
         layout,
         padding: EdgeInsets::all(length(padding)),
-    });
+    })
+    .unwrap_or_else(|_| unreachable!("alignment fixture runtime admission is valid"));
     assert!(app.register_text_font_bytes(CANTARELL.to_vec()).is_ok());
     assert!(app.register_text_font_bytes(ARABIC.to_vec()).is_ok());
     let latin = FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!("known family"));

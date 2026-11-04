@@ -25,7 +25,38 @@ struct State {
 
 struct DisclosureApp;
 
+impl DisclosureApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 4 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 4;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for DisclosureApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let nodes = if state.expanded { 4 } else { 2 };
+        runenui_core::ProducerBudget::new(nodes, 0)
+            .with_reconciliation(nodes, 0, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -145,7 +176,8 @@ fn author(harness: &mut TestHarness<DisclosureApp>, action: Action) {
 
 #[test]
 fn activate_expand_collapse_converge_on_one_application_update_fifo() {
-    let mut harness = TestHarness::<DisclosureApp>::mount(state(false));
+    let mut harness = TestHarness::<DisclosureApp>::mount(state(false))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, false);
     let trigger = harness
@@ -216,7 +248,8 @@ fn activate_expand_collapse_converge_on_one_application_update_fifo() {
 
 #[test]
 fn disabled_and_authored_state_do_not_mutate_expansion_behind_app() {
-    let mut harness = TestHarness::<DisclosureApp>::mount(state(false));
+    let mut harness = TestHarness::<DisclosureApp>::mount(state(false))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     author(&mut harness, Action::Enable(false));
     assert_disclosure(&harness, false);
@@ -247,7 +280,8 @@ fn disabled_and_authored_state_do_not_mutate_expansion_behind_app() {
 
 #[test]
 fn collapsing_mounted_panel_retires_focusable_child_and_relationship() {
-    let mut harness = TestHarness::<DisclosureApp>::mount(state(true));
+    let mut harness = TestHarness::<DisclosureApp>::mount(state(true))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, true);
     let child = harness

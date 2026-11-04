@@ -17,6 +17,35 @@ pub(in crate::runtime) struct PlannedWorkTrace {
     pre_recorded_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
 }
 
+pub(in crate::runtime::application) struct ApplicationTransactionCommitContext {
+    subscription_duplicates: HashSet<runenui_core::WorkKey>,
+    subscription_cancelled: usize,
+    transaction_parent: Option<TraceSequence>,
+    cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+    trace_transaction: ApplicationTraceTransaction,
+    root_quota: Option<crate::queue::RootQuotaId>,
+}
+
+impl ApplicationTransactionCommitContext {
+    pub(in crate::runtime::application) const fn new(
+        subscription_duplicates: HashSet<runenui_core::WorkKey>,
+        subscription_cancelled: usize,
+        transaction_parent: Option<TraceSequence>,
+        cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Self {
+        Self {
+            subscription_duplicates,
+            subscription_cancelled,
+            transaction_parent,
+            cancellation_lineage,
+            trace_transaction,
+            root_quota,
+        }
+    }
+}
+
 impl PlannedWorkTrace {
     pub(in crate::runtime) fn new(
         transaction_parent: Option<TraceSequence>,
@@ -48,6 +77,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )>,
         transaction_parent: Option<TraceSequence>,
         instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> Result<(), CommitError> {
         if effects.is_empty() {
             return Ok(());
@@ -78,44 +108,57 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         self.plan_and_commit_application_transaction(
             input,
-            &HashSet::new(),
-            0,
-            transaction_parent,
-            HashMap::new(),
-            ApplicationTraceTransaction::new(instant),
+            ApplicationTransactionCommitContext::new(
+                HashSet::new(),
+                0,
+                transaction_parent,
+                HashMap::new(),
+                ApplicationTraceTransaction::new(instant),
+                root_quota,
+            ),
+            root_quota.and_then(|root| self.queue.root_profile(root)),
+            runenui_core::ProducerPhase::ApplicationUpdate,
         )
     }
 
     pub(in crate::runtime::application) fn plan_and_commit_application_transaction(
         &mut self,
         input: ApplicationTransactionInput<Action, Protocol>,
-        application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
-        application_subscription_cancelled: usize,
-        transaction_parent: Option<TraceSequence>,
-        pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
-        trace_transaction: ApplicationTraceTransaction,
+        context: ApplicationTransactionCommitContext,
+        producer_budget: Option<runenui_core::ProducerBudget>,
+        phase: runenui_core::ProducerPhase,
     ) -> Result<(), CommitError> {
-        let plan = PlannedApplicationTransaction::plan(input, &self.work, &self.queue)
-            .map_err(|_| CommitError::Registry)?;
-        self.commit_planned_application_transaction(
-            plan,
-            application_subscription_duplicates,
-            application_subscription_cancelled,
-            transaction_parent,
-            pre_recorded_cancellation_lineage,
-            trace_transaction,
+        let root_quota = context.root_quota;
+        let state = self.state();
+        let plan = PlannedApplicationTransaction::plan(
+            input,
+            &self.work,
+            &self.queue,
+            state,
+            self.action_producer_budget,
+            crate::transaction::TransactionProducerContext {
+                root_quota,
+                producer_budget,
+                phase,
+            },
         )
+        .map_err(CommitError::from)?;
+        self.commit_planned_application_transaction(plan, context)
     }
 
     pub(in crate::runtime::application) fn commit_planned_application_transaction(
         &mut self,
         plan: PlannedApplicationTransaction<Action, Protocol>,
-        application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
-        application_subscription_cancelled: usize,
-        transaction_parent: Option<TraceSequence>,
-        pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
-        trace_transaction: ApplicationTraceTransaction,
+        context: ApplicationTransactionCommitContext,
     ) -> Result<(), CommitError> {
+        let ApplicationTransactionCommitContext {
+            subscription_duplicates: application_subscription_duplicates,
+            subscription_cancelled: application_subscription_cancelled,
+            transaction_parent,
+            cancellation_lineage: pre_recorded_cancellation_lineage,
+            trace_transaction,
+            root_quota,
+        } = context;
         let PlannedApplicationTransaction {
             invalidated,
             starts,
@@ -150,33 +193,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             next_generation,
             semantic_events,
             work_trace,
-        );
-        self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
-        for owner in mounted_subscription_dirty {
-            self.queue
-                .push_mounted_subscription_reconcile(owner.clone(), transaction_parent)
-                .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
-            self.mounted_subscription_reconcile_pending.push(owner);
+            root_quota,
+        )?;
+        if let Some(root_quota) = root_quota {
+            self.append_cancellation_envelopes_rooted(
+                &invalidated,
+                &cancellation_lineage,
+                root_quota,
+            );
+        } else {
+            self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
         }
+        self.commit_mounted_subscription_reconciles(
+            mounted_subscription_dirty,
+            transaction_parent,
+            root_quota,
+        );
         self.append_planned_outputs(
             application_outputs,
             transaction_parent,
             trace_transaction.logical_time(),
+            root_quota,
         )?;
         let application_subscription_started = application_subscription_starts.len();
-        for generation in application_subscription_starts {
-            self.queue
-                .push_effect_start(generation)
-                .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
-        }
+        self.commit_application_subscription_starts(application_subscription_starts, root_quota);
         self.append_planned_outputs(
             mounted_outputs,
             transaction_parent,
             trace_transaction.logical_time(),
+            root_quota,
         )?;
         self.record_subscription_duplicates(
             &WorkOwner::Application,
-            application_subscription_duplicates,
+            &application_subscription_duplicates,
         );
         self.trace.record_draft(
             trace_transaction
@@ -190,6 +239,48 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
+    fn commit_mounted_subscription_reconciles(
+        &mut self,
+        owners: Vec<crate::MountedNodeId>,
+        transaction_parent: Option<TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) {
+        for owner in owners {
+            if let Some(root_quota) = root_quota {
+                self.queue
+                    .push_mounted_subscription_reconcile_rooted(
+                        owner.clone(),
+                        transaction_parent,
+                        root_quota,
+                    )
+                    .unwrap_or_else(|_| unreachable!("application root quota was preflighted"));
+            } else {
+                self.queue
+                    .push_mounted_subscription_reconcile(owner.clone(), transaction_parent)
+                    .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
+            }
+            self.mounted_subscription_reconcile_pending.push(owner);
+        }
+    }
+
+    fn commit_application_subscription_starts(
+        &mut self,
+        generations: Vec<crate::work::WorkGeneration>,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) {
+        for generation in generations {
+            if let Some(root_quota) = root_quota {
+                self.queue
+                    .push_effect_start_rooted(generation, root_quota)
+                    .unwrap_or_else(|_| unreachable!("application root quota was preflighted"));
+            } else {
+                self.queue
+                    .push_effect_start(generation)
+                    .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
+            }
+        }
+    }
+
     pub(in crate::runtime) fn commit_application_starts(
         &mut self,
         invalidated: &[crate::work::WorkGeneration],
@@ -197,35 +288,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         next_generation: Option<core::num::NonZeroU64>,
         semantic_events: Vec<PlannedWorkSemanticEvent>,
         work_trace: PlannedWorkTrace,
-    ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>, CommitError> {
+        self.work
+            .commit_application_turn_starts(
+                starts.iter().map(crate::transaction::planned_start_family),
+            )
+            .map_err(CommitError::ProducerViolation)?;
         let PlannedWorkTrace {
             transaction_parent,
             logical_time,
             pre_recorded_lineage,
         } = work_trace;
         let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
-        let mut identities: HashMap<_, _> = invalidated
-            .iter()
-            .filter_map(|generation| {
-                self.trace_work_identity(*generation)
-                    .map(|identity| (generation.get(), identity))
-            })
-            .collect();
-        identities.extend(starts.iter().map(|start| {
-            (
-                start.generation.get(),
-                TraceWorkIdentity::new(
-                    trace_work_owner(&start.owner),
-                    trace_work_family(start.family),
-                    start.generation.get(),
-                    start.key.clone(),
-                ),
-            )
-        }));
+        let identities = self.application_start_identities(invalidated, &starts);
         self.work.commit_generation_reservation(next_generation);
         for start in starts {
             if !invalidated_set.contains(&start.generation) {
-                self.commit_application_start(start);
+                self.commit_application_start(start, root_quota);
             }
         }
         let mut semantic_parents: HashMap<_, _> = invalidated
@@ -293,27 +373,95 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     );
                     semantic_parents.insert(generation.get(), invalidated);
                     lineage.insert(generation.get(), (identity, invalidated));
-                    self.invalidate_generation_now(generation);
+                    self.invalidate_generation_for_transaction(generation);
                 }
             }
         }
-        lineage
+        Ok(lineage)
+    }
+
+    /// Snapshot trace identities before invalidation removes their live records.
+    fn application_start_identities(
+        &self,
+        invalidated: &[crate::work::WorkGeneration],
+        starts: &[crate::transaction::PlannedOwnedStart<Action, Protocol>],
+    ) -> HashMap<u64, TraceWorkIdentity> {
+        invalidated
+            .iter()
+            .filter_map(|generation| {
+                self.trace_work_identity(*generation)
+                    .map(|identity| (generation.get(), identity))
+            })
+            .chain(starts.iter().map(|start| {
+                (
+                    start.generation.get(),
+                    TraceWorkIdentity::new(
+                        trace_work_owner(&start.owner),
+                        trace_work_family(start.family),
+                        start.generation.get(),
+                        start.key.clone(),
+                    ),
+                )
+            }))
+            .collect()
     }
 
     pub(in crate::runtime) fn commit_application_start(
         &mut self,
         start: crate::transaction::PlannedOwnedStart<Action, Protocol>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> TraceWorkIdentity {
         let generation = start.generation;
+        if let Some(root_quota) = root_quota {
+            let repeating_timer = match &start.payload {
+                PlannedStartPayload::Effect(Effect::Timer(timer)) => {
+                    Some(timer.__runtime_is_repeating())
+                }
+                _ => None,
+            };
+            let retained = match start.family {
+                crate::work::WorkFamily::HostRequest => self
+                    .queue
+                    .retain_root_host_request_lease(root_quota, generation),
+                crate::work::WorkFamily::LocalTask => self
+                    .queue
+                    .retain_root_local_task_lease(root_quota, generation),
+                crate::work::WorkFamily::SendTask => self
+                    .queue
+                    .retain_root_send_task_lease(root_quota, generation),
+                crate::work::WorkFamily::Timer => self.queue.retain_root_timer_lease(
+                    root_quota,
+                    generation,
+                    repeating_timer.unwrap_or_else(|| {
+                        unreachable!("timer start retains timer effect payload")
+                    }),
+                ),
+                crate::work::WorkFamily::FrameworkService => self
+                    .queue
+                    .retain_root_framework_service_lease(root_quota, generation),
+                _ => self.queue.retain_root_work_lease(root_quota),
+            };
+            retained.unwrap_or_else(|_| unreachable!("work-start root lease was preflighted"));
+        }
         match start.payload {
             PlannedStartPayload::Effect(effect) => {
-                self.work
-                    .commit_record(generation, start.owner, start.family, start.key, effect);
+                self.work.commit_record(
+                    generation,
+                    start.owner,
+                    start.family,
+                    start.key,
+                    effect,
+                    root_quota,
+                );
             }
             PlannedStartPayload::Subscription(declaration) => {
                 let key = declaration.key.clone();
-                self.work
-                    .commit_subscription_record(generation, start.owner.clone(), key);
+                self.work.commit_subscription_record(
+                    generation,
+                    start.owner.clone(),
+                    key,
+                    root_quota,
+                );
                 self.subscriptions.push(LiveSubscription::new(
                     generation,
                     start.owner,
@@ -331,25 +479,50 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         outputs: Vec<PlannedOutput<Action>>,
         transaction_parent: Option<TraceSequence>,
         logical_time: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> Result<(), CommitError> {
         for output in outputs {
             match output {
-                PlannedOutput::Action(action) => {
-                    self.commit_preflighted_action(
-                        action,
-                        transaction_parent,
-                        None,
-                        TraceActionCategory::ApplicationEffect,
-                        logical_time,
-                    )
-                    .map_err(|_| CommitError::Registry)?;
+                PlannedOutput::Action {
+                    action,
+                    producer_budget,
+                } => {
+                    if let Some(root_quota) = root_quota {
+                        self.commit_preflighted_action_from_root(
+                            action,
+                            producer_budget,
+                            root_quota,
+                            transaction_parent,
+                            None,
+                            TraceActionCategory::ApplicationEffect,
+                            logical_time,
+                        )
+                        .map_err(|_| CommitError::Registry)?;
+                    } else {
+                        self.admit_and_commit_action(
+                            action,
+                            transaction_parent,
+                            None,
+                            TraceActionCategory::ApplicationEffect,
+                            logical_time,
+                        )
+                        .map_err(|_| CommitError::Registry)?;
+                    }
                 }
                 PlannedOutput::Start(generation) => {
-                    self.queue
-                        .push_effect_start(generation)
-                        .unwrap_or_else(|_| {
-                            unreachable!("application transaction was preflighted")
-                        });
+                    if let Some(root_quota) = root_quota {
+                        self.queue
+                            .push_effect_start_rooted(generation, root_quota)
+                            .unwrap_or_else(|_| {
+                                unreachable!("application root quota was preflighted")
+                            });
+                    } else {
+                        self.queue
+                            .push_effect_start(generation)
+                            .unwrap_or_else(|_| {
+                                unreachable!("application transaction was preflighted")
+                            });
+                    }
                 }
                 PlannedOutput::Redraw => self.request_redraw(transaction_parent, logical_time),
             }

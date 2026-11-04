@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::{cell::Cell, rc::Rc, time::Duration};
 
@@ -15,8 +27,8 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig,
     RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome,
-    TraceRecordKind, TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition,
-    UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputProcessingRejection,
+    TraceRecordKind, TraceTargetRejection, UiDefaultDisposition, UiInputClaimReason,
+    UiInputConflict, UiInputFinality, UiInputProcessingRejection,
 };
 
 const SHORTCUT_DIAGNOSTIC: &str = "runenui.shortcut-scope.duplicate-chord";
@@ -119,6 +131,22 @@ struct KeyboardGate {
 }
 
 impl Widget<Action> for KeyboardGate {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -283,6 +311,30 @@ fn app_branch_b() -> Element<Action> {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 0)
+            .with_reconciliation(8, 0, 8)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 0)
+            .with_reconciliation(8, 8, 8)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(63, 52)
+            .with_reconciliation(8, 8, 8)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -318,13 +370,11 @@ fn target(runtime: &mut AppRuntime<App>, authored: &'static str) -> runenui_runt
 
 fn focus(runtime: &mut AppRuntime<App>, authored: &'static str) {
     let target = target(runtime, authored);
-    runtime
-        .submit_command(
-            target,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("fixture focus request is accepted"));
+    admitted!(runtime.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ));
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -350,7 +400,7 @@ fn has_trace(runtime: &AppRuntime<App>, kind: fn(&TraceRecordKind) -> bool) -> b
 fn nearest_scope_wins_and_missing_inner_declaration_falls_back_to_outer() {
     let control = KeyModifiers::NONE.with_control();
 
-    let mut inner = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut inner = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut inner);
     focus(&mut inner, "target.a");
     submit_shortcut(
@@ -366,7 +416,7 @@ fn nearest_scope_wins_and_missing_inner_declaration_falls_back_to_outer() {
     settle(&mut inner);
     assert_eq!(inner.state().fired, ["inner"]);
 
-    let mut outer = AppRuntime::<App>::mount(State::new(Mode::OuterOnly));
+    let mut outer = admitted!(AppRuntime::<App>::mount(State::new(Mode::OuterOnly)));
     settle(&mut outer);
     focus(&mut outer, "target.a");
     submit_shortcut(
@@ -387,7 +437,7 @@ fn nearest_scope_wins_and_missing_inner_declaration_falls_back_to_outer() {
 fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallback() {
     let control = KeyModifiers::NONE.with_control();
     for mode in [Mode::Ambiguous, Mode::Disabled] {
-        let mut runtime = AppRuntime::<App>::mount(State::new(mode));
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(mode)));
         settle(&mut runtime);
         focus(&mut runtime, "target.a");
         submit_shortcut(
@@ -413,7 +463,7 @@ fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallbac
 #[test]
 fn exact_modifiers_and_logical_physical_identity_are_distinct() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
 
@@ -474,7 +524,7 @@ fn exact_modifiers_and_logical_physical_identity_are_distinct() {
 fn repeat_policy_suppresses_or_allows_without_outer_fallback() {
     let control = KeyModifiers::NONE.with_control();
 
-    let mut ignored = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut ignored = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut ignored);
     focus(&mut ignored, "target.a");
     submit_shortcut(
@@ -494,7 +544,7 @@ fn repeat_policy_suppresses_or_allows_without_outer_fallback() {
         TraceRecordKind::KeyboardShortcutRepeatSuppressed
     )));
 
-    let mut allowed = AppRuntime::<App>::mount(State::new(Mode::AllowRepeat));
+    let mut allowed = admitted!(AppRuntime::<App>::mount(State::new(Mode::AllowRepeat)));
     settle(&mut allowed);
     focus(&mut allowed, "target.a");
     submit_shortcut(
@@ -515,7 +565,7 @@ fn repeat_policy_suppresses_or_allows_without_outer_fallback() {
 fn composition_suppresses_accelerators_and_generic_activation_defaults() {
     let control = KeyModifiers::NONE.with_control();
 
-    let mut composing = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut composing = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut composing);
     focus(&mut composing, "target.a");
     submit_shortcut(
@@ -535,7 +585,7 @@ fn composition_suppresses_accelerators_and_generic_activation_defaults() {
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
     )));
 
-    let mut ambiguous_composing = AppRuntime::<App>::mount(State::new(Mode::Ambiguous));
+    let mut ambiguous_composing = admitted!(AppRuntime::<App>::mount(State::new(Mode::Ambiguous)));
     settle(&mut ambiguous_composing);
     focus(&mut ambiguous_composing, "target.a");
     submit_shortcut(
@@ -559,7 +609,7 @@ fn composition_suppresses_accelerators_and_generic_activation_defaults() {
         TraceRecordKind::KeyboardShortcutAmbiguous
     )));
 
-    let mut composing_enter = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut composing_enter = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut composing_enter);
     focus(&mut composing_enter, "target.a");
     composing_enter
@@ -589,7 +639,7 @@ fn composition_suppresses_accelerators_and_generic_activation_defaults() {
 #[test]
 fn routed_prevent_default_suppresses_accelerator_after_callbacks() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::PreventDefault));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::PreventDefault)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
 
@@ -631,7 +681,7 @@ fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention(
         (Mode::Ambiguous, false, UiDefaultDisposition::None, false),
         (Mode::Disabled, false, UiDefaultDisposition::None, false),
     ] {
-        let mut runtime = AppRuntime::<App>::mount(State::new(mode));
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(mode)));
         settle(&mut runtime);
         focus(&mut runtime, "target.a");
         let receipt = submit_shortcut(
@@ -696,7 +746,7 @@ fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention(
 #[test]
 fn accelerator_emits_existing_application_command_non_reentrantly() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
 
@@ -765,7 +815,7 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
 #[test]
 fn queued_focus_transfer_rejects_original_keyboard_before_shortcut_derivation() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
     let other = target(&mut runtime, "target.b");
@@ -826,7 +876,7 @@ fn queued_focus_transfer_rejects_original_keyboard_before_shortcut_derivation() 
 #[test]
 fn accepted_keyboard_target_replacement_rejects_original_input_before_shortcut_derivation() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
     runtime.state().callback_calls.set(0);
@@ -878,7 +928,7 @@ fn accepted_keyboard_target_replacement_rejects_original_input_before_shortcut_d
 #[test]
 fn replacement_after_keyboard_processing_makes_queued_command_stale_without_retargeting() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
 
@@ -908,39 +958,39 @@ fn replacement_after_keyboard_processing_makes_queued_command_stale_without_reta
 }
 
 #[test]
-fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output() {
-    const QUEUE_CAPACITY: usize = 8;
+fn shortcut_input_admission_refusal_returns_exact_event_before_callback() {
+    const QUEUE_CAPACITY: usize = 63;
     let control = KeyModifiers::NONE.with_control();
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
-        .with_transaction_outputs(1);
-    let mut queue_limited = AppRuntime::<App>::mount_with_config(
+        .with_transaction_outputs(52);
+    let mut queue_limited = admitted!(AppRuntime::<App>::mount_with_config(
         State::new(Mode::Unique),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut queue_limited);
     focus(&mut queue_limited, "target.a");
     queue_limited.state().callback_calls.set(0);
-    submit_shortcut(
-        &mut queue_limited,
-        key(
-            "s",
-            "KeyS",
-            control,
-            false,
-            KeyboardCompositionState::Inactive,
-        ),
+    queue_limited
+        .submit_action(Action::Filler)
+        .unwrap_or_else(|_| unreachable!("one bounded action root fits before shortcut input"));
+    let event = key(
+        "s",
+        "KeyS",
+        control,
+        false,
+        KeyboardCompositionState::Inactive,
     );
-    for _ in 0..(QUEUE_CAPACITY - 1) {
-        queue_limited
-            .submit_action(Action::Filler)
-            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
-    }
-    let _ = queue_limited
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    let expected_event = event.clone();
+    let Err(refused) = queue_limited.submit_keyboard(event) else {
+        unreachable!("the complete keyboard profile cannot fit beside the queued root");
+    };
+    assert_eq!(
+        refused.kind(),
+        runenui_runtime::SubmitKeyboardErrorKind::Full
+    );
+    let returned_event = refused.into_event();
+    assert_eq!(returned_event, expected_event);
     assert_eq!(queue_limited.state().callback_calls.get(), 0);
     assert_eq!(queue_limited.state().fired, [] as [&str; 0]);
     assert_eq!(queue_limited.status(), RuntimeStatus::Running);
@@ -949,19 +999,46 @@ fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output()
         TraceRecordKind::KeyboardShortcutMatched
             | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
     )));
-    assert!(queue_limited.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
-        }
-    )));
+    let _ = queue_limited
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    queue_limited
+        .submit_keyboard(returned_event)
+        .unwrap_or_else(|_| {
+            unreachable!("the exact refused keyboard event retries after capacity returns")
+        });
+    let _ = queue_limited
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("retried shortcut observation"))
+        .report()
+        .to_owned();
+    assert_eq!(queue_limited.state().callback_calls.get(), 1);
+    assert_eq!(queue_limited.state().fired, ["inner"]);
+    assert!(
+        queue_limited
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::KeyboardShortcutMatched))
+    );
 }
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
     let control = KeyModifiers::NONE.with_control();
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     focus(&mut runtime, "target.a");
     runtime.state().callback_calls.set(0);
@@ -998,7 +1075,7 @@ fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
 
 #[test]
 fn retained_shortcut_scope_diagnostics_update_unique_duplicate_unique() {
-    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::new(Mode::Unique)));
     settle(&mut runtime);
     let style = StyleEnvironment::default();
 
@@ -1045,6 +1122,29 @@ struct TypeAheadState {
 struct TypeAheadApp;
 
 impl UiApp for TypeAheadApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(44, 36)
+            .with_reconciliation(5, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = TypeAheadState;
     type Action = TypeAheadAction;
     type HostProtocol = NoHostProtocol;
@@ -1117,7 +1217,7 @@ fn type_ahead_target(
 
 #[test]
 fn accelerator_precedes_type_ahead_when_editor_does_not_own_key() {
-    let mut runtime = AppRuntime::<TypeAheadApp>::mount(TypeAheadState::default());
+    let mut runtime = admitted!(AppRuntime::<TypeAheadApp>::mount(TypeAheadState::default()));
     settle(&mut runtime);
     let alpha = type_ahead_target(&mut runtime, "typeahead.alpha");
     runtime
@@ -1168,6 +1268,22 @@ struct EditorState {
 struct EditableProbe;
 
 impl Widget<EditorAction> for EditableProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1198,6 +1314,29 @@ impl Widget<EditorAction> for EditableProbe {
 struct EditorApp;
 
 impl UiApp for EditorApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(26, 20)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = EditorState;
     type Action = EditorAction;
     type HostProtocol = NoHostProtocol;
@@ -1238,7 +1377,7 @@ impl UiApp for EditorApp {
 
 #[test]
 fn editor_owned_m10_default_precedes_accelerator_matching() {
-    let mut runtime = AppRuntime::<EditorApp>::mount(EditorState::default());
+    let mut runtime = admitted!(AppRuntime::<EditorApp>::mount(EditorState::default()));
     settle(&mut runtime);
     let authored = runenui_core::ElementId::from_static("editor.target")
         .unwrap_or_else(|_| unreachable!("fixture authored id is valid"));

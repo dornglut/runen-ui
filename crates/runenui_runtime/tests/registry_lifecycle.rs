@@ -11,6 +11,31 @@ struct Tick;
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One text owner, one local start, and its outcome/cancel pair. Each
+        // completed generation retires before its successor's app turn.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = Tick;
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -42,7 +67,8 @@ fn next_tick() -> Effects<Tick, runenui_core::NoHostProtocol> {
 
 #[test]
 fn ten_thousand_completed_anonymous_tasks_leave_no_registry_records() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let report = runtime
         .pump(PumpBudget::new(40_000, usize::MAX, TASK_COUNT, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))

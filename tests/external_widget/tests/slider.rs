@@ -33,6 +33,39 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let (queue_credits, outputs, mounted_nodes, retained_updates) = match action {
+            Action::Set(_) | Action::Enabled(true) => (1, 0, 0, 1),
+            Action::Enabled(false) => (5, 4, 1, 1),
+            Action::External(_) => (2, 0, 1, 0),
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_reconciliation(
+                mounted_nodes,
+                retained_updates,
+                usize::from(matches!(action, Action::External(_))),
+            )
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(67, 64)
+            .with_reconciliation(1, 1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -75,6 +108,23 @@ struct ExternalSlider {
 }
 
 impl Widget<Action> for ExternalSlider {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -102,7 +152,7 @@ impl Widget<Action> for ExternalSlider {
             _ => return WidgetEventOutput::none(),
         };
         if (0.0..=100.0).contains(&proposed) && number(proposed) != self.value {
-            context.emit(Action::Set(number(proposed)));
+            let _ = context.try_emit(Action::Set(number(proposed)));
             context.prevent_default();
             context.stop_propagation();
         }
@@ -152,7 +202,8 @@ fn fresh() -> AppRuntime<App> {
         enabled: true,
         external: false,
         proposals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -172,7 +223,13 @@ fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication
             &environment,
             LayoutConstraints::unbounded(),
         ))
-        .unwrap_or_else(|_| unreachable!("slider scene publishes"))
+        .unwrap_or_else(|error| {
+            unreachable!(
+                "slider scene publishes: {error:?}; status={:?}; trace={:?}",
+                runtime.status(),
+                runtime.trace().kinds().collect::<Vec<_>>()
+            )
+        })
 }
 
 fn inspect(publication: &runenui_runtime::SurfacePublication, expected: f64, enabled: bool) {
@@ -419,9 +476,13 @@ fn disabled_mid_drag_releases_capture_without_emitting_more_values() {
         context,
     )
     .with_changed_button(PointerButton::Primary);
-    runtime
-        .submit_pointer(terminal)
-        .unwrap_or_else(|_| unreachable!("up admitted"));
+    runtime.submit_pointer(terminal).unwrap_or_else(|error| {
+        unreachable!(
+            "up admitted: {error:?}; status={:?}; trace={:?}",
+            runtime.status(),
+            runtime.trace().kinds().collect::<Vec<_>>()
+        )
+    });
     settle(&mut runtime);
     assert_eq!(runtime.state().proposals, previous_proposals);
     runtime

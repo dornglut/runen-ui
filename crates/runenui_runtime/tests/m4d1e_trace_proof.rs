@@ -1,3 +1,4 @@
+#![cfg(feature = "internal-test-seams")]
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
@@ -6,7 +7,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
-    TraceDeliveryOutcome, TraceInputRecordRole, TraceRecordKind, TraceRoutedAdmissionRejection,
+    TraceDeliveryOutcome, TraceInputRecordRole, TraceRecordKind, TraceRoutedIntegrityFailure,
     TraceSequence,
 };
 
@@ -24,6 +25,22 @@ struct State {
 struct CompositionTarget;
 
 impl Widget<Action> for CompositionTarget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -36,6 +53,30 @@ impl Widget<Action> for CompositionTarget {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // A column and an optional composition target, without initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // RequestFocus derives one callback-only FocusIn notification.
+        // The source and its required terminal continuation coexist.
+        runenui_core::ProducerBudget::new(2, 1).with_application_outputs(0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -117,7 +158,7 @@ fn descends_from(
     }
 }
 
-fn trigger_cleanup_admission_failure(runtime: &mut AppRuntime<App>) {
+fn trigger_cleanup_integrity_failure(runtime: &mut AppRuntime<App>) {
     runtime
         .submit_action(Action::Remove)
         .unwrap_or_else(|_| unreachable!("removal enters the queue"));
@@ -127,6 +168,11 @@ fn trigger_cleanup_admission_failure(runtime: &mut AppRuntime<App>) {
     runtime
         .submit_action(Action::Noop)
         .unwrap_or_else(|_| unreachable!("second filler enters the queue"));
+
+    // Ordinary queue pressure now preserves funded cleanup. Inject a genuine
+    // callback bridge integrity failure to retain TRACE-EVENT-10's terminal
+    // ancestry proof without treating valid accepted work as an overload error.
+    runtime.__fail_routed_callback_bridge_for_test();
 
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -147,15 +193,16 @@ fn assert_suppressed_cleanup_chain(
     let rejection = runtime
         .trace()
         .records()
-        .find(|record| {
+        .filter(|record| {
             matches!(
                 record.kind(),
-                TraceRecordKind::RoutedEventAdmissionRejected {
-                    capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+                TraceRecordKind::RoutedIntegrityFailed {
+                    failure: TraceRoutedIntegrityFailure::CallbackBridgeFailure
                 }
             )
         })
-        .unwrap_or_else(|| unreachable!("cleanup admission rejection is traced"));
+        .last()
+        .unwrap_or_else(|| unreachable!("cleanup bridge integrity failure is traced"));
     let rejection_sequence = rejection.sequence();
 
     let retired = runtime
@@ -260,7 +307,8 @@ fn assert_idempotent_shutdown_from_terminal(
 fn terminal_composition_failure_reconstructs_through_cancellation_and_idempotent_shutdown() {
     let config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
-            .with_waiting_envelopes(3)
+            // Two lifetime credits plus the removal and both unary followers.
+            .with_waiting_envelopes(5)
             .with_transaction_outputs(1),
     );
     let mut runtime = AppRuntime::<App>::mount_with_config(
@@ -268,7 +316,8 @@ fn terminal_composition_failure_reconstructs_through_cancellation_and_idempotent
             target_present: true,
         },
         config,
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     focus_target(&mut runtime);
     let composition = runtime
@@ -276,7 +325,7 @@ fn terminal_composition_failure_reconstructs_through_cancellation_and_idempotent
         .unwrap_or_else(|_| unreachable!("focused target accepts composition"));
     settle(&mut runtime);
 
-    trigger_cleanup_admission_failure(&mut runtime);
+    trigger_cleanup_integrity_failure(&mut runtime);
     let terminal_sequence = assert_suppressed_cleanup_chain(&runtime, composition.generation());
     assert_idempotent_shutdown_from_terminal(&mut runtime, terminal_sequence);
 }

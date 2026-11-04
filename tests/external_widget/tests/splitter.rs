@@ -35,6 +35,35 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let (queue_credits, outputs, mounted_nodes, retained_updates, dirty_owners) = match action {
+            Action::Resize(_) | Action::Enabled(true) => (1, 0, 0, 1, 0),
+            Action::Enabled(false) | Action::Horizontal(_) => (6, 5, 0, 1, 0),
+            Action::External(_) => (6, 5, 1, 0, 1),
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(67, 64)
+            .with_reconciliation(1, 1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -92,6 +121,23 @@ struct DownstreamSplitter {
 }
 
 impl Widget<Action> for DownstreamSplitter {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -118,7 +164,7 @@ impl Widget<Action> for DownstreamSplitter {
             Some(SemanticCommand::SetValue(value)) => SplitterRequest::SetValue(value),
             _ => return WidgetEventOutput::none(),
         };
-        context.emit(Action::Resize(request));
+        let _ = context.try_emit(Action::Resize(request));
         context.prevent_default();
         context.stop_propagation();
         WidgetEventOutput::none()
@@ -178,7 +224,8 @@ fn fresh() -> AppRuntime<App> {
         external: false,
         horizontal: false,
         proposals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -195,7 +242,13 @@ fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication
             &StyleEnvironment::default(),
             LayoutConstraints::unbounded(),
         ))
-        .unwrap_or_else(|_| unreachable!("splitter surface publishes"))
+        .unwrap_or_else(|error| {
+            unreachable!(
+                "splitter surface publishes: {error:?}; status={:?}; trace={:?}",
+                runtime.status(),
+                runtime.trace().kinds().collect::<Vec<_>>()
+            )
+        })
 }
 
 fn inspect(
@@ -569,6 +622,30 @@ struct TwoPaneState {
 }
 
 impl UiApp for TwoPaneApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 4, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(67, 64)
+            .with_reconciliation(0, 4, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = TwoPaneState;
     type Action = SplitterRequest;
     type HostProtocol = NoHostProtocol;
@@ -627,7 +704,8 @@ fn pane_width(publication: &runenui_runtime::SurfacePublication, id: &str) -> f3
 
 #[test]
 fn splitter_requests_rebuild_both_application_owned_pane_geometries() {
-    let mut runtime = AppRuntime::<TwoPaneApp>::mount(TwoPaneState { left: 80.0 });
+    let mut runtime = AppRuntime::<TwoPaneApp>::mount(TwoPaneState { left: 80.0 })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_two_pane(&mut runtime);
     let first = publish_two_pane(&mut runtime);
     assert_eq!(pane_width(&first, "pane.left"), 80.0);

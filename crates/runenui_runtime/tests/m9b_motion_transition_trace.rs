@@ -30,6 +30,29 @@ enum TraceTransitionAction {
 struct TraceTransitionApp;
 
 impl UiApp for TraceTransitionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TraceTransitionState;
     type Action = TraceTransitionAction;
     type HostProtocol = NoHostProtocol;
@@ -200,7 +223,8 @@ fn observed_since(runtime: &AppRuntime<TraceTransitionApp>, start: usize) -> Vec
 
 #[test]
 fn transition_trace_preserves_start_sampling_replacement_and_disable_order() {
-    let mut runtime = AppRuntime::<TraceTransitionApp>::mount(initial_state());
+    let mut runtime = AppRuntime::<TraceTransitionApp>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     publish(&mut runtime);
 
     dispatch(&mut runtime, TraceTransitionAction::SetTarget(true));
@@ -291,7 +315,8 @@ fn transition_trace_preserves_start_sampling_replacement_and_disable_order() {
 
 #[test]
 fn active_transition_is_cancelled_before_a_new_explicit_timeline_starts() {
-    let mut runtime = AppRuntime::<TraceTransitionApp>::mount(initial_state());
+    let mut runtime = AppRuntime::<TraceTransitionApp>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     publish(&mut runtime);
     dispatch(&mut runtime, TraceTransitionAction::SetTarget(true));
     publish(&mut runtime);

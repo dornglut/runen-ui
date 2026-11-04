@@ -81,6 +81,42 @@ impl State {
 struct NumericApp;
 
 impl UiApp for NumericApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let focus_cleanup_outputs = usize::from(
+            state.present && !state.disabled && matches!(action, Action::Disabled(true)),
+        ) * 2;
+        let newly_mounted_owners = match action {
+            Action::ShowStepControls(true) if state.present && !state.show_step_controls => 4,
+            Action::Remove if state.present => 1,
+            _ => 0,
+        };
+        runenui_core::ProducerBudget::new(4, focus_cleanup_outputs)
+            .with_reconciliation(4, 4, newly_mounted_owners)
+            .with_application_outputs(focus_cleanup_outputs)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(18, 18)
+            .with_reconciliation(4, 4, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -191,7 +227,8 @@ fn runtime_with_bounds(
         maximum,
         show_step_controls: false,
         requests: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(
         runtime
             .register_text_font_bytes(FONT.to_vec())
@@ -793,6 +830,20 @@ struct DownstreamSpin {
     range: runenui_core::SemanticRange,
 }
 impl runenui_core::Widget<()> for DownstreamSpin {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // Editing is a runtime default; this widget has no event callback output.
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 

@@ -8,7 +8,7 @@ use runenui_core::{
     WidgetEventOutput, WidgetTextInput, container,
 };
 use runenui_runtime::{
-    AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
+    AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, SubmitActionErrorKind,
     TraceRecord, TraceRecordKind, TraceSequence, WorkSequence,
 };
 
@@ -34,6 +34,22 @@ struct State {
 struct RootWidget;
 
 impl Widget<Action> for RootWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -47,6 +63,22 @@ struct TargetWidget {
 }
 
 impl Widget<Action> for TargetWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -77,6 +109,33 @@ impl Widget<Action> for TargetWidget {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            Action::Noop => runenui_core::ProducerBudget::new(1, 0),
+            Action::Remove => runenui_core::ProducerBudget::new(3, 0)
+                .with_reconciliation(1, 1, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0)),
+        }
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(2, 2, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -126,7 +185,8 @@ fn mount_with_config(log: Rc<RefCell<Vec<Fact>>>, config: RuntimeConfig) -> AppR
             target_present: true,
         },
         config,
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -191,30 +251,6 @@ fn ancestry_contains_work(
     false
 }
 
-fn ancestry_contains_sequence(
-    runtime: &AppRuntime<App>,
-    mut parent: Option<TraceSequence>,
-    expected: TraceSequence,
-) -> bool {
-    for _ in 0..runtime.trace().len() {
-        let Some(sequence) = parent else {
-            return false;
-        };
-        if sequence == expected {
-            return true;
-        }
-        let Some(record) = runtime
-            .trace()
-            .records()
-            .find(|record| record.sequence() == sequence)
-        else {
-            return false;
-        };
-        parent = record.causal_parent();
-    }
-    false
-}
-
 #[test]
 fn removal_cleanup_keeps_composition_sequence_and_links_the_removing_action() {
     let log = Rc::new(RefCell::new(Vec::new()));
@@ -257,11 +293,13 @@ fn removal_cleanup_keeps_composition_sequence_and_links_the_removing_action() {
 
 #[test]
 #[allow(clippy::assert_is_empty)]
-fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
+fn cleanup_capacity_refusal_preserves_composition_for_an_exact_retry() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
-            .with_waiting_envelopes(3)
+            // Four lifetime credits coexist with three unary followers and
+            // one free position, insufficient for the three-credit removal.
+            .with_waiting_envelopes(8)
             .with_transaction_outputs(1),
     );
     let mut runtime = mount_with_config(Rc::clone(&log), config);
@@ -272,24 +310,18 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
     settle(&mut runtime);
     log.borrow_mut().clear();
 
-    let removal = runtime
-        .submit_action(Action::Remove)
-        .unwrap_or_else(|_| unreachable!("removal occupies the FIFO head"));
-    for _ in 0..2 {
+    for _ in 0..3 {
         runtime
             .submit_action(Action::Noop)
             .unwrap_or_else(|_| unreachable!("filler occupies cleanup capacity"));
     }
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
-
-    assert_eq!(
-        runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
-    );
+    let Err(refused) = runtime.submit_action(Action::Remove) else {
+        unreachable!("removal cannot consume the live cleanup reserve");
+    };
+    assert_eq!(refused.kind(), SubmitActionErrorKind::Full);
+    let removal = refused.into_action();
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(runtime.state().target_present);
     assert!(log.borrow().is_empty());
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -298,32 +330,53 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
         }
     )));
 
-    let retired = find_record(&runtime, |record| {
-        matches!(record.kind(), TraceRecordKind::CompositionRetired)
-            && record.work_sequence() == Some(start.sequence())
-            && ancestry_contains_work(&runtime, record.causal_parent(), removal)
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    runtime.submit_action(removal).unwrap_or_else(|_| {
+        unreachable!("the exact refused removal retries after capacity returns")
     });
-    let terminal = find_record(&runtime, |record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::RuntimeTerminal {
-                reason: RuntimeTerminalReason::Poisoned
-            }
-        )
-    });
-    assert!(ancestry_contains_sequence(
-        &runtime,
-        terminal.causal_parent(),
-        retired.sequence()
-    ));
-    let terminal_sequence = terminal.sequence();
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(!runtime.state().target_present);
+    assert_eq!(
+        *log.borrow(),
+        [
+            Fact::Cancel(CompositionCancelReason::Removal),
+            Fact::Unmounted,
+        ]
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::CompositionCancelled {
+            reason: CompositionCancelReason::Removal
+        }
+    ) && record.work_sequence()
+        == Some(start.sequence())));
 
     let report = runtime
         .shutdown()
         .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
-    assert_eq!(report.unmounted_lifetimes(), 2);
+    assert_eq!(report.unmounted_lifetimes(), 1);
     assert_eq!(runtime.status(), RuntimeStatus::Closed);
     assert_eq!(
         log.borrow()
@@ -332,18 +385,4 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
             .count(),
         1
     );
-    assert!(
-        !log.borrow()
-            .iter()
-            .any(|fact| matches!(fact, Fact::Cancel(_)))
-    );
-
-    let shutdown = find_record(&runtime, |record| {
-        matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. })
-    });
-    assert!(ancestry_contains_sequence(
-        &runtime,
-        shutdown.causal_parent(),
-        terminal_sequence
-    ));
 }

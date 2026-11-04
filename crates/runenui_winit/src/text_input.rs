@@ -146,7 +146,9 @@ mod tests {
 
     #[test]
     fn public_adapter_focus_and_capability_are_exactly_gated() {
-        let mut runtime = AppRuntime::<DemoApp>::mount(());
+        let mut runtime = AppRuntime::<DemoApp>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         runtime
             .pump(PumpBudget::new(16, 16, 16, 16))
             .unwrap_or_else(|_| unreachable!("standalone public test mounts"));

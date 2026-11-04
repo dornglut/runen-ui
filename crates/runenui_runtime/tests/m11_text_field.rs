@@ -33,6 +33,31 @@ enum Action {
 struct FormApp;
 
 impl UiApp for FormApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single text-field widget has one initial owner reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // TextField declares two event outputs; the route may also request one
+        // clipboard service, with its response and cancellation obligations.
+        runenui_core::ProducerBudget::new(14, 12)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = FormState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -118,6 +143,7 @@ fn app_with_source(mode: SemanticEditableMode, source: &str) -> AppRuntime<FormA
         placeholder: "Type here".to_owned(),
         submits: 0,
     })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"))
 }
 
 fn pump_form_boundary(runtime: &mut AppRuntime<FormApp>, max_envelopes: usize) {
@@ -139,7 +165,7 @@ fn focus(runtime: &mut AppRuntime<FormApp>) {
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("field is focusable"));
+        .unwrap_or_else(|error| panic!("field focus admission: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -230,7 +256,17 @@ fn publication(runtime: &mut AppRuntime<FormApp>) -> runenui_runtime::SurfacePub
             LogicalSize::try_new(48.0, 180.0)
                 .unwrap_or_else(|_| unreachable!("surface bounds are finite")),
         ))
-        .unwrap_or_else(|_| unreachable!("public TextField surface publishes"))
+        .unwrap_or_else(|error| {
+            panic!(
+                "public TextField publication: {error:?}; status={:?}; records={:?}",
+                runtime.status(),
+                runtime
+                    .trace()
+                    .records()
+                    .map(|record| format!("{:?}", record.kind()))
+                    .collect::<Vec<_>>()
+            )
+        })
 }
 
 #[test]

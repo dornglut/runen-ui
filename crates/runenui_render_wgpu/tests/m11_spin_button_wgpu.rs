@@ -38,6 +38,26 @@ impl ResourceProvider for NoExternalResources {
 
 struct SpinGpuApp;
 impl UiApp for SpinGpuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One editable owner, runtime edit defaults and clipboard/IME service pairs.
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = String;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -82,7 +102,8 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 fn publication(source: &str) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
-    let mut runtime = AppRuntime::<SpinGpuApp>::mount(source.to_owned());
+    let mut runtime = AppRuntime::<SpinGpuApp>::mount(source.to_owned())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime.register_text_font_bytes(FONT.to_vec())?;
     runtime.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,

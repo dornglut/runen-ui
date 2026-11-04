@@ -59,6 +59,22 @@ struct ExternalEditor {
 }
 
 impl Widget<Action> for ExternalEditor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -141,6 +157,31 @@ impl ExternalEditor {
 struct ExternalEditingApp;
 
 impl UiApp for ExternalEditingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 2)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -190,7 +231,8 @@ fn downstream_widget_uses_only_public_transactional_editing_contracts() {
         revision: 0,
         ordinary_actions: 0,
         equal_action_value_observed: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     harness
         .submit_automation_command(
             ElementId::new("external.editor")
@@ -254,6 +296,22 @@ struct ExternalClipboardEditor {
 }
 
 impl Widget<ClipboardAction> for ExternalClipboardEditor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -326,6 +384,30 @@ impl ExternalClipboardEditor {
 struct ExternalClipboardApp;
 
 impl UiApp for ExternalClipboardApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = ClipboardState;
     type Action = ClipboardAction;
     type HostProtocol = NoHostProtocol;
@@ -366,7 +448,8 @@ fn downstream_test_harness_completes_typed_fake_framework_services() {
     let mut harness = TestHarness::<ExternalClipboardApp>::mount(ClipboardState {
         text: "public clipboard text".to_owned(),
         visible: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let settle_budget = SettleBudget::new(
         NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
         PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX),
@@ -446,7 +529,8 @@ fn focused_clipboard_editor() -> TestHarness<ExternalClipboardApp> {
     let mut harness = TestHarness::<ExternalClipboardApp>::mount(ClipboardState {
         text: "public clipboard text".to_owned(),
         visible: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_fixture_font(&mut harness);
     harness
         .submit_automation_command(
@@ -593,7 +677,8 @@ fn downstream_test_harness_rejects_a_stale_service_after_owner_removal() {
     let mut harness = TestHarness::<ExternalClipboardApp>::mount(ClipboardState {
         text: "sensitive host payload".to_owned(),
         visible: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     harness
         .submit_automation_command(
             ElementId::new("external.clipboard")
@@ -692,7 +777,8 @@ fn focused_editing_harness() -> TestHarness<ExternalEditingApp> {
         revision: 0,
         ordinary_actions: 0,
         equal_action_value_observed: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     harness
         .submit_automation_command(
             ElementId::new("external.editor")
@@ -723,7 +809,9 @@ fn submit_paste_response(
         .unwrap_or_else(|_| unreachable!("paste is routed through the editable owner"));
     assert_eq!(
         harness.run_until_idle(new_settle_budget()).outcome(),
-        SettleOutcome::Idle
+        SettleOutcome::Idle,
+        "paste settlement trace: {}",
+        harness.trace_jsonl()
     );
     let token = harness
         .pending_framework_services()

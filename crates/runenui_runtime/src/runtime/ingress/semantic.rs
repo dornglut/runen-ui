@@ -394,6 +394,12 @@ pub(in crate::runtime) const fn trace_semantic_action_rejection(
 ) -> TraceSemanticActionRejection {
     match kind {
         SubmitSemanticActionErrorKind::Closed => TraceSemanticActionRejection::Closed,
+        SubmitSemanticActionErrorKind::WorkCapacity(_) => {
+            TraceSemanticActionRejection::WorkCapacity
+        }
+        SubmitSemanticActionErrorKind::InvalidProducerProfile => {
+            TraceSemanticActionRejection::InvalidProducerProfile
+        }
         SubmitSemanticActionErrorKind::Terminal(_) => TraceSemanticActionRejection::Terminal,
         SubmitSemanticActionErrorKind::ForeignSurface => {
             TraceSemanticActionRejection::ForeignSurface
@@ -426,6 +432,12 @@ pub(in crate::runtime) const fn trace_semantic_action_rejection(
 const fn map_command_rejection(kind: SubmitCommandErrorKind) -> SubmitSemanticActionErrorKind {
     match kind {
         SubmitCommandErrorKind::Full => SubmitSemanticActionErrorKind::Full,
+        SubmitCommandErrorKind::WorkCapacity(family) => {
+            SubmitSemanticActionErrorKind::WorkCapacity(family)
+        }
+        SubmitCommandErrorKind::InvalidProducerProfile => {
+            SubmitSemanticActionErrorKind::InvalidProducerProfile
+        }
         SubmitCommandErrorKind::Closed => SubmitSemanticActionErrorKind::Closed,
         SubmitCommandErrorKind::Terminal(reason) => SubmitSemanticActionErrorKind::Terminal(reason),
         SubmitCommandErrorKind::WorkSequenceExhausted => {

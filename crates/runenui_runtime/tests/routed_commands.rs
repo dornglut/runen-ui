@@ -1,24 +1,25 @@
 #![allow(refining_impl_trait)]
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use runenui_core::{
     ChildBearingWidget, CommandDerivation, CommandOrigin, Element, EventContext, EventPhase,
-    NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    NoHostProtocol, SemanticCommand, TimerEffect, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
-    children, container,
+    WorkResidencyBudget, WorkStartBudget, children, container,
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
-    SubmitCommandErrorKind, TraceConfig, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceTargetRejection,
+    SubmitAutomationErrorKind, SubmitCommandErrorKind, TraceConfig, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceTargetRejection,
 };
 
 #[derive(Debug)]
@@ -30,9 +31,22 @@ enum Behavior {
     Emit,
     EmitAndStop(EventPhase),
     EmitAndPrevent,
+    OverEmitAtTarget,
+    DeclareMaxAtTarget,
     DisableAtTarget,
     DelegateAtTarget,
-    EmitTwiceAtTarget,
+}
+
+const fn event_output_bound(behavior: Behavior) -> usize {
+    match behavior {
+        Behavior::Emit
+        | Behavior::EmitAndStop(_)
+        | Behavior::EmitAndPrevent
+        | Behavior::OverEmitAtTarget
+        | Behavior::DelegateAtTarget => 1,
+        Behavior::DeclareMaxAtTarget => usize::MAX / 2 + 1,
+        Behavior::Observe | Behavior::DisableAtTarget => 0,
+    }
 }
 
 #[derive(Debug)]
@@ -44,6 +58,34 @@ struct Probe {
 }
 
 impl Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => {
+                let outputs = match self.behavior {
+                    Behavior::DeclareMaxAtTarget => usize::MAX / 2 + 1,
+                    Behavior::Emit
+                    | Behavior::EmitAndStop(_)
+                    | Behavior::EmitAndPrevent
+                    | Behavior::OverEmitAtTarget
+                    | Behavior::DelegateAtTarget => 1,
+                    Behavior::Observe | Behavior::DisableAtTarget => 0,
+                };
+                runenui_core::WidgetProducerBudget::new(outputs)
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = bool;
 
     fn create_state(&self) -> Self::State {
@@ -61,16 +103,16 @@ impl Widget<Action> for Probe {
             .push(format!("{}:{:?}", self.name, context.phase()));
         match self.behavior {
             Behavior::Emit => {
-                context.emit(Action(self.name));
+                let _ = context.try_emit(Action(self.name));
                 WidgetEventOutput::none()
             }
             Behavior::EmitAndStop(phase) if phase == context.phase() => {
-                context.emit(Action(self.name));
+                let _ = context.try_emit(Action(self.name));
                 context.stop_propagation();
                 WidgetEventOutput::none()
             }
             Behavior::EmitAndPrevent => {
-                context.emit(Action(self.name));
+                let _ = context.try_emit(Action(self.name));
                 context.prevent_default();
                 WidgetEventOutput::none()
             }
@@ -85,19 +127,22 @@ impl Widget<Action> for Probe {
                         command.origin().derivation() == CommandDerivation::Direct
                     }) =>
             {
-                context.emit_command(SemanticCommand::OpenMenu);
+                let _ = context.try_emit_command(SemanticCommand::OpenMenu);
                 WidgetEventOutput::none()
             }
-            Behavior::EmitTwiceAtTarget if context.phase() == EventPhase::Target => {
-                context.emit(Action("first"));
-                context.emit(Action("second"));
+            Behavior::OverEmitAtTarget if context.phase() == EventPhase::Target => {
+                // This fixture intentionally violates its declared one-action
+                // producer budget to prove the runtime's integrity boundary.
+                let _ = context.try_emit(Action("first"));
+                let _ = context.try_emit(Action("second"));
                 WidgetEventOutput::none()
             }
             Behavior::Observe
             | Behavior::EmitAndStop(_)
+            | Behavior::OverEmitAtTarget
+            | Behavior::DeclareMaxAtTarget
             | Behavior::DisableAtTarget
-            | Behavior::DelegateAtTarget
-            | Behavior::EmitTwiceAtTarget => WidgetEventOutput::none(),
+            | Behavior::DelegateAtTarget => WidgetEventOutput::none(),
         }
     }
 
@@ -133,6 +178,34 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixed root, parent, and target each consume one initial dirty-owner
+        // reconciliation envelope. No mount/effect callback emits work.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // Root and parent each receive capture and bubble callbacks; target gets
+        // one target callback. The actionable target may also emit its default.
+        // Probe's Event budgets are exact for their immutable fixture behavior.
+        let output_bound = 2 * event_output_bound(state.root)
+            + 2 * event_output_bound(state.parent)
+            + event_output_bound(state.target).saturating_add(1);
+        runenui_core::ProducerBudget::new(output_bound, output_bound).with_application_outputs(0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -184,6 +257,27 @@ struct SingleState {
 struct SingleApp;
 
 impl UiApp for SingleApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The exact target's default activation returns one application action.
+        runenui_core::ProducerBudget::new(1, 1).with_application_outputs(0)
+    }
+
     type State = SingleState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -209,6 +303,7 @@ fn make_single(config: RuntimeConfig) -> AppRuntime<SingleApp> {
         },
         config,
     )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"))
 }
 
 fn settle_single(runtime: &mut AppRuntime<SingleApp>) {
@@ -240,6 +335,167 @@ fn submit_single(runtime: &mut AppRuntime<SingleApp>) {
         .to_owned();
 }
 
+struct FrontierEventState {
+    callbacks: Rc<Cell<usize>>,
+    queue_credits: usize,
+}
+
+#[derive(Debug)]
+struct FrontierEventWidget {
+    callbacks: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for FrontierEventWidget {
+    type State = usize;
+
+    fn create_state(&self) -> Self::State {
+        0
+    }
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Event && *state < 2 {
+            runenui_core::WidgetProducerBudget::new(2)
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target
+            && event
+                .as_semantic_command()
+                .is_some_and(|command| command.command() == SemanticCommand::OpenMenu)
+            && *state < 2
+        {
+            *state += 1;
+            self.callbacks.set(*state);
+            let _ = context.try_emit_command(SemanticCommand::OpenMenu);
+            let _ = context.try_emit_command(SemanticCommand::OpenMenu);
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct FrontierEventApp;
+
+impl UiApp for FrontierEventApp {
+    type State = FrontierEventState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(1, 0, 1)
+    }
+
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(state.queue_credits, 2)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 1, 0)
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(FrontierEventWidget {
+            callbacks: Rc::clone(&state.callbacks),
+        })
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+fn frontier_event_runtime(
+    queue_credits: usize,
+    trace_capacity: usize,
+) -> AppRuntime<FrontierEventApp> {
+    AppRuntime::mount_with_config(
+        FrontierEventState {
+            callbacks: Rc::new(Cell::new(0)),
+            queue_credits,
+        },
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+    )
+    .unwrap_or_else(|error| unreachable!("initial root profile fits: {error}"))
+}
+
+#[test]
+fn routed_finite_frontier_shortage_is_a_typed_event_violation() {
+    for trace_capacity in [0, 256] {
+        let mut runtime = frontier_event_runtime(2, trace_capacity);
+        runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        let target = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::OpenMenu,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the first event has its declared capacity"));
+        let _ = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the first queued command is reached"));
+        assert_eq!(runtime.state().callbacks.get(), 1);
+        let _ = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the second queued command is reached"));
+        let RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(cause)) =
+            runtime.status()
+        else {
+            unreachable!("the routed event's finite frontier shortage is typed");
+        };
+        assert_eq!(
+            cause.kind,
+            runenui_core::ProducerViolationKind::DeclarationExceeded
+        );
+        assert_eq!(
+            cause.phase,
+            runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event)
+        );
+        assert_eq!(
+            cause.component,
+            runenui_core::BudgetComponent::QueueFrontier
+        );
+        assert_eq!(cause.declared, 2);
+        assert_eq!(cause.attempted, Some(3));
+    }
+}
+
+#[test]
+fn routed_finite_frontier_exact_fit_runs_both_callbacks() {
+    for trace_capacity in [0, 256] {
+        let mut runtime = frontier_event_runtime(3, trace_capacity);
+        runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        let target = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::OpenMenu,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the first event has its declared capacity"));
+        let _ = runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the exact-fit routed frontier drains"));
+        assert_eq!(runtime.state().callbacks.get(), 2);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
+}
+
 fn make_runtime(root: Behavior, parent: Behavior, target: Behavior) -> AppRuntime<App> {
     make_runtime_with_config(root, parent, target, RuntimeConfig::default())
 }
@@ -260,6 +516,7 @@ fn make_runtime_with_config(
         },
         config,
     )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"))
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
@@ -933,7 +1190,6 @@ fn routed_integrity_trace_distinguishes_broken_topology() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
     let target = target(&mut runtime);
-    runtime.__break_routed_topology_for_test(&target);
     runtime
         .submit_command(
             target.clone(),
@@ -941,6 +1197,7 @@ fn routed_integrity_trace_distinguishes_broken_topology() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the target is live at submission"));
+    runtime.__break_routed_topology_for_test(&target);
     let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -975,11 +1232,11 @@ fn routed_integrity_trace_distinguishes_callback_bridge_failure() {
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn routed_integrity_trace_distinguishes_output_allowance_exceeded() {
-    let limits = RuntimeLimits::default().with_transaction_outputs(1);
+    let limits = RuntimeLimits::default().with_transaction_outputs(2);
     let mut runtime = make_runtime_with_config(
         Behavior::Observe,
         Behavior::Observe,
-        Behavior::EmitTwiceAtTarget,
+        Behavior::OverEmitAtTarget,
         RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut runtime);
@@ -988,7 +1245,13 @@ fn routed_integrity_trace_distinguishes_output_allowance_exceeded() {
     assert_routed_integrity_failure(
         &runtime,
         &target,
-        TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
+        TraceRoutedIntegrityFailure::ProducerViolation(runenui_core::ProducerContractViolation {
+            kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+            phase: runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event),
+            component: runenui_core::BudgetComponent::Outputs,
+            declared: 1,
+            attempted: Some(2),
+        }),
         Some(&target),
     );
 }
@@ -1056,8 +1319,14 @@ fn routed_queue_admission_has_an_exact_required_boundary() {
     settle_single(&mut short);
     short.state().log.borrow_mut().clear();
     submit_single(&mut short);
-    assert!(short.state().log.borrow().is_empty());
-    assert!(short.trace().kinds().any(|kind| matches!(
+    // The command's slot becomes available when the FIFO pops it, so a single
+    // reserved continuation credit is sufficient for its one child action.
+    assert_eq!(short.state().log.borrow().len(), 2);
+    assert_eq!(
+        short.state().log.borrow().as_slice(),
+        ["target:Target", "target:default"]
+    );
+    assert!(!short.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::RoutedEventAdmissionRejected {
             capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
@@ -1072,25 +1341,64 @@ fn routed_output_allowance_rejects_zero_before_the_first_callback() {
     let mut runtime = make_single(RuntimeConfig::default().with_limits(limits));
     settle_single(&mut runtime);
     runtime.state().log.borrow_mut().clear();
-    submit_single(&mut runtime);
+    let target = runtime.index().nodes()[0].id().clone();
+    let refused = runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .err()
+        .unwrap_or_else(|| unreachable!("zero-output profile is refused before acceptance"));
+    assert_eq!(
+        refused.kind(),
+        SubmitCommandErrorKind::InvalidProducerProfile
+    );
+    assert_eq!(
+        refused.into_unaccepted().into_parts(),
+        (
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic()
+        )
+    );
     assert!(runtime.state().log.borrow().is_empty());
     assert_eq!(runtime.status(), RuntimeStatus::Running);
-    assert!(runtime.trace().kinds().any(|kind| matches!(
+    assert!(!runtime.trace().kinds().any(|kind| matches!(
         kind,
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::TransactionOutputs
-        }
+        TraceRecordKind::CommandSubmissionAccepted | TraceRecordKind::RoutedEventStarted
     )));
 }
 
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn routed_admission_rejects_checked_arithmetic_overflow_before_the_first_callback() {
-    let limits = RuntimeLimits::default().with_transaction_outputs(usize::MAX);
-    let mut runtime = make_single(RuntimeConfig::default().with_limits(limits));
-    settle_single(&mut runtime);
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(usize::MAX)
+        .with_transaction_outputs(usize::MAX);
+    let mut runtime = make_runtime_with_config(
+        Behavior::Observe,
+        Behavior::Observe,
+        Behavior::DeclareMaxAtTarget,
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
     runtime.state().log.borrow_mut().clear();
-    submit_single(&mut runtime);
+    let target = target(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::OpenMenu,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|error| {
+            unreachable!("wide profile is admitted before route admission: {error}")
+        });
+    let _ = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(runtime.state().log.borrow().is_empty());
     assert_eq!(
         runtime.status(),
@@ -1125,7 +1433,7 @@ fn trace_capacity_zero_preserves_routed_behavior() {
 #[cfg(feature = "internal-test-seams")]
 #[test]
 #[allow(clippy::assert_is_empty)]
-fn every_routed_bounded_authority_rejects_before_the_first_callback() {
+fn routed_callbacks_without_work_starts_ignore_unrelated_work_family_caps() {
     let base = RuntimeLimits::default()
         .with_waiting_envelopes(2)
         .with_transaction_outputs(1);
@@ -1138,7 +1446,11 @@ fn every_routed_bounded_authority_rejects_before_the_first_callback() {
         settle_single(&mut runtime);
         runtime.state().log.borrow_mut().clear();
         submit_single(&mut runtime);
-        assert!(runtime.state().log.borrow().is_empty());
+        assert_eq!(runtime.state().log.borrow().len(), 2);
+        assert_eq!(
+            runtime.state().log.borrow().as_slice(),
+            ["target:Target", "target:default"]
+        );
     }
 
     let mut generation = make_single(RuntimeConfig::default().with_limits(base));
@@ -1146,11 +1458,11 @@ fn every_routed_bounded_authority_rejects_before_the_first_callback() {
     generation.state().log.borrow_mut().clear();
     generation.__seed_next_work_generation_for_test(0);
     submit_single(&mut generation);
-    assert!(generation.state().log.borrow().is_empty());
     assert_eq!(
-        generation.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::WorkGenerationExhausted)
+        generation.state().log.borrow().as_slice(),
+        ["target:Target", "target:default"]
     );
+    assert_eq!(generation.status(), RuntimeStatus::Running);
 
     let mut reconciliation = make_single(RuntimeConfig::default().with_limits(base));
     settle_single(&mut reconciliation);
@@ -1189,7 +1501,7 @@ fn every_routed_bounded_authority_rejects_before_the_first_callback() {
 
 #[test]
 #[allow(clippy::assert_is_empty)]
-fn no_output_callback_is_rejected_when_conservative_family_reservation_is_unavailable() {
+fn routed_activation_without_local_starts_runs_with_no_local_task_capacity() {
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(2)
         .with_transaction_outputs(1)
@@ -1198,13 +1510,11 @@ fn no_output_callback_is_rejected_when_conservative_family_reservation_is_unavai
     settle_single(&mut runtime);
     runtime.state().log.borrow_mut().clear();
     submit_single(&mut runtime);
-    assert!(runtime.state().log.borrow().is_empty());
-    assert!(runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::LocalTasks
-        }
-    )));
+    assert_eq!(runtime.state().log.borrow().len(), 2);
+    assert_eq!(
+        runtime.state().log.borrow().as_slice(),
+        ["target:Target", "target:default"]
+    );
 }
 
 #[test]
@@ -1292,45 +1602,70 @@ fn routed_trace_links_acceptance_route_default_commit_and_later_action() {
     );
 }
 
+#[derive(Debug)]
+enum ReplaceAction {
+    Replace,
+}
+#[derive(Debug)]
+struct ReplaceState(bool);
+struct ReplaceApp;
+impl UiApp for ReplaceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Initial mount schedules one subscription-reconciliation pass for
+        // the sole retained owner, which declares no subscriptions.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
+    type State = ReplaceState;
+    type Action = ReplaceAction;
+    type HostProtocol = NoHostProtocol;
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        if state.0 {
+            Element::new(Probe {
+                name: "replacement",
+                behavior: Behavior::Observe,
+                log: Rc::new(RefCell::new(Vec::new())),
+                actionable: false,
+            })
+            .map_action(|_| ReplaceAction::Replace)
+            .key("replacement")
+        } else {
+            Element::new(Probe {
+                name: "old",
+                behavior: Behavior::Observe,
+                log: Rc::new(RefCell::new(Vec::new())),
+                actionable: false,
+            })
+            .map_action(|_| ReplaceAction::Replace)
+            .key("old")
+        }
+    }
+    fn update(state: &mut Self::State, _: Self::Action) {
+        state.0 = true;
+    }
+}
+
 #[test]
 fn accepted_command_can_become_stale_before_processing() {
-    #[derive(Debug)]
-    enum ReplaceAction {
-        Replace,
-    }
-    #[derive(Debug)]
-    struct ReplaceState(bool);
-    struct ReplaceApp;
-    impl UiApp for ReplaceApp {
-        type State = ReplaceState;
-        type Action = ReplaceAction;
-        type HostProtocol = NoHostProtocol;
-        fn root(state: &Self::State) -> Element<Self::Action> {
-            if state.0 {
-                Element::new(Probe {
-                    name: "replacement",
-                    behavior: Behavior::Observe,
-                    log: Rc::new(RefCell::new(Vec::new())),
-                    actionable: false,
-                })
-                .map_action(|_| ReplaceAction::Replace)
-                .key("replacement")
-            } else {
-                Element::new(Probe {
-                    name: "old",
-                    behavior: Behavior::Observe,
-                    log: Rc::new(RefCell::new(Vec::new())),
-                    actionable: false,
-                })
-                .map_action(|_| ReplaceAction::Replace)
-                .key("old")
-            }
-        }
-        fn update(state: &mut Self::State, _: Self::Action) {
-            state.0 = true;
-        }
-    }
-    let mut runtime = AppRuntime::<ReplaceApp>::mount(ReplaceState(false));
+    let mut runtime = AppRuntime::<ReplaceApp>::mount(ReplaceState(false))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1384,4 +1719,184 @@ fn accepted_command_can_become_stale_before_processing() {
         })
         .unwrap_or_else(|| unreachable!("processing rejection is traced"));
     assert_eq!(processing.causal_parent(), Some(acceptance.sequence()));
+}
+
+#[derive(Debug)]
+struct TimerBudgetProbe {
+    event_calls: Rc<Cell<usize>>,
+    accepted_timers: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for TimerBudgetProbe {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Event {
+            runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(WorkStartBudget::new(0, 0, 1, 0, 0))
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn event(
+        &mut self,
+        (): &mut (),
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if event
+            .as_semantic_command()
+            .is_some_and(|command| command.command() == SemanticCommand::OpenMenu)
+        {
+            self.event_calls.set(self.event_calls.get() + 1);
+            let accepted_timers = Rc::clone(&self.accepted_timers);
+            if context
+                .try_timer(TimerEffect::once(Duration::from_secs(60), || ()))
+                .is_ok()
+            {
+                accepted_timers.set(accepted_timers.get() + 1);
+            }
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct TimerBudgetApp;
+
+struct TimerBudgetState {
+    interaction_outputs: usize,
+    event_calls: Rc<Cell<usize>>,
+    accepted_timers: Rc<Cell<usize>>,
+    updates: usize,
+}
+
+impl UiApp for TimerBudgetApp {
+    type State = TimerBudgetState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_subscriptions(0, 0)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, state.interaction_outputs)
+            .with_subscriptions(0, 0)
+            .with_work_starts(WorkStartBudget::new(0, 0, 1, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(0, 0, 1, 0, 0, 0))
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(TimerBudgetProbe {
+            event_calls: Rc::clone(&state.event_calls),
+            accepted_timers: Rc::clone(&state.accepted_timers),
+        })
+        .id("routed.timer")
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.updates += 1;
+    }
+}
+
+fn run_timer_budget_profile(interaction_outputs: usize) -> TimerBudgetState {
+    let event_calls = Rc::new(Cell::new(0));
+    let accepted_timers = Rc::new(Cell::new(0));
+    TimerBudgetState {
+        interaction_outputs,
+        event_calls,
+        accepted_timers,
+        updates: 0,
+    }
+}
+
+#[test]
+fn routed_one_output_timer_start_profile_is_admitted_at_exact_authored_bound() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(1))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    runtime
+        .submit_automation_command(
+            runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+            SemanticCommand::OpenMenu,
+        )
+        .unwrap_or_else(|error| unreachable!("exact event output and timer start fit: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("routed timer transaction pumps"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().event_calls.get(), 1);
+    assert_eq!(runtime.state().accepted_timers.get(), 1);
+    runtime
+        .advance_time(Duration::from_secs(61))
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("timer callback pumps"));
+    assert_eq!(runtime.state().updates, 1);
+}
+
+#[test]
+fn routed_one_extra_output_control_admits_timer_start_profile() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(2))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    runtime
+        .submit_automation_command(
+            runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+            SemanticCommand::OpenMenu,
+        )
+        .unwrap_or_else(|error| unreachable!("extra output covers current preflight: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("routed timer transaction pumps"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().event_calls.get(), 1);
+    assert_eq!(runtime.state().accepted_timers.get(), 1);
+}
+
+#[test]
+fn routed_zero_output_profile_refuses_before_callback_or_command_acceptance() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(0))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    let Err(error) = runtime.submit_automation_command(
+        runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+        SemanticCommand::OpenMenu,
+    ) else {
+        unreachable!("zero-output interaction profile cannot authorize timer output");
+    };
+    assert_eq!(
+        error.kind(),
+        &SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::InvalidProducerProfile)
+    );
+    assert_eq!(runtime.state().event_calls.get(), 0);
+    assert_eq!(runtime.state().accepted_timers.get(), 0);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(
+        !runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::CommandSubmissionAccepted))
+    );
 }

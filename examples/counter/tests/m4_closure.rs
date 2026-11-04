@@ -42,9 +42,10 @@ fn settle(runtime: &mut AppRuntime<CounterApp>) {
 
 fn mounted_counter() -> AppRuntime<CounterApp> {
     let mut runtime = AppRuntime::<CounterApp>::mount_with_config(
-        Counter::new(),
+        crate::app::CounterAppState::new(Counter::new()),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(4096)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -116,7 +117,7 @@ fn activate_command(
         .submit_command(target.clone(), SemanticCommand::Activate, origin)
         .unwrap_or_else(|_| unreachable!("exact semantic activation is accepted"));
     settle(runtime);
-    assert_eq!(runtime.state().count, expected_count);
+    assert_eq!(runtime.state().counter.count, expected_count);
     assert_activation_source(runtime, trace_start, expected_source);
     assert_increment_identity(runtime, target);
 }
@@ -192,7 +193,7 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
         ))
         .unwrap_or_else(|_| unreachable!("displayed pointer up is accepted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().count, 1);
+    assert_eq!(runtime.state().counter.count, 1);
     assert_activation_source(&runtime, trace_start, EventSource::Pointer);
 
     let mounted_increment = increment_target(&mut runtime);
@@ -211,7 +212,7 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
         .submit_keyboard(enter_down())
         .unwrap_or_else(|_| unreachable!("raw Enter is accepted for the focused increment"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().count, 2);
+    assert_eq!(runtime.state().counter.count, 2);
     assert_activation_source(&runtime, trace_start, EventSource::Keyboard);
     assert_increment_identity(&mut runtime, &mounted_increment);
 
@@ -235,7 +236,7 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
         .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
         .unwrap_or_else(|_| unreachable!("authored-ID automation activation is accepted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().count, 5);
+    assert_eq!(runtime.state().counter.count, 5);
     assert_activation_source(&runtime, trace_start, EventSource::Automation);
     assert_increment_identity(&mut runtime, &mounted_increment);
 

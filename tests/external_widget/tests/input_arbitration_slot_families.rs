@@ -23,6 +23,22 @@ type Observed = Rc<RefCell<Vec<UiInputFamily>>>;
 #[derive(Debug)]
 struct Probe(Observed);
 impl<Action> Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) {}
     fn text_input(&self, (): &()) -> WidgetTextInput {
@@ -62,6 +78,29 @@ impl<Action> Widget<Action> for Probe {
 }
 struct AppA;
 impl UiApp for AppA {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Source and lifetime continuation coexist.
+        runenui_core::ProducerBudget::new(6, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = Observed;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -79,6 +118,29 @@ struct StateB {
 }
 struct AppB;
 impl UiApp for AppB {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Source and lifetime continuation coexist.
+        runenui_core::ProducerBudget::new(6, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = StateB;
     type Action = u8;
     type HostProtocol = NoHostProtocol;
@@ -209,13 +271,17 @@ fn two_unrelated_slots_correlate_all_four_families_without_sequence_or_generatio
         let a_observed = Observed::default();
         let b_observed = Observed::default();
         let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(capacity));
-        let mut a = AppRuntime::<AppA>::mount_with_config(Rc::clone(&a_observed), config);
+        let mut a = AppRuntime::<AppA>::mount_with_config(Rc::clone(&a_observed), config)
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
         let mut b = AppRuntime::<AppB>::mount_with_config(
             StateB {
                 observed: Rc::clone(&b_observed),
             },
             config,
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let (a_context, a_point) = prepare(&mut a);
         let (b_context, b_point) = prepare(&mut b);
         let a_sequences = admit(&mut a, a_context, a_point);

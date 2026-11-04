@@ -17,6 +17,7 @@ pub(crate) struct RuntimeTestSeams {
 
 pub(in crate::runtime) enum ActionCommitError<Action> {
     QueueFull(Action),
+    WorkCapacity(Action, crate::WorkCapacityFamily),
     WorkSequenceExhausted(Action),
     TraceSequenceExhausted(Action),
     Integrity(Action),
@@ -94,6 +95,7 @@ pub enum RuntimeTerminalReason {
     MountedIdentityExhausted,
     TraceSequenceExhausted,
     SurfacePublicationCounterExhausted(SurfacePublicationCounter),
+    ProducerContractViolation(runenui_core::ProducerContractViolation),
     Poisoned,
 }
 
@@ -120,6 +122,9 @@ impl fmt::Display for RuntimeTerminalReason {
                     SurfacePublicationCounter::SemanticRevision => "semantic revision",
                 })
             }
+            Self::ProducerContractViolation(_) => {
+                formatter.write_str("producer contract violation")
+            }
             Self::Poisoned => formatter.write_str("runtime integrity poisoned after mutation"),
         }
     }
@@ -135,14 +140,20 @@ pub enum RuntimeStatus {
 
 /// Refusal from one explicit surface publication attempt.
 ///
-/// `Full`, `TextLayout`, `PresentationGeometry`, and `Motion` are recoverable
+/// `Full`, `WorkCapacity`, `InvalidProducerProfile`, `TextLayout`,
+/// `PresentationGeometry`, and `Motion` are recoverable
 /// publication refusals: the previous publication remains authoritative and
 /// redraw/dirty state stays pending for a later retry. Terminal failures expose
 /// the exact runtime reason that prevented publication.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PublishSurfaceError {
+    /// The canonical queue cannot reserve the publication's derived work.
     Full,
+    /// A work family cannot reserve the publication's declared residency.
+    WorkCapacity(crate::WorkCapacityFamily),
+    /// The declared publication producers cannot compose a feasible turn.
+    InvalidProducerProfile,
     TextLayout(runenui_text::TextLayoutError),
     PresentationGeometry,
     Motion,
@@ -193,6 +204,9 @@ pub enum HostResponseError<Response> {
         response: Response,
         reason: RuntimeTerminalReason,
     },
+    /// The host mapper consumed the response before its action could be
+    /// admitted. Carries the terminal reason, not the consumed response.
+    MappedActionTerminal(RuntimeTerminalReason),
 }
 
 pub enum FrameworkServiceResponseError {
@@ -239,6 +253,7 @@ impl<Response> fmt::Debug for HostResponseError<Response> {
             Self::Full(_) => "HostResponseError::Full(..)",
             Self::Closed(_) => "HostResponseError::Closed(..)",
             Self::Terminal { .. } => "HostResponseError::Terminal { .. }",
+            Self::MappedActionTerminal(_) => "HostResponseError::MappedActionTerminal(..)",
         })
     }
 }

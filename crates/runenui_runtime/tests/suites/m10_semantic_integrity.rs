@@ -9,6 +9,11 @@ mod m10e_scroll;
 #[path = "../semantic_m5c_integrity.rs"]
 mod semantic_m5c_integrity;
 
+#[path = "../producer_publication_reveals.rs"]
+mod producer_publication_reveals;
+#[path = "../producer_workload.rs"]
+mod producer_workload;
+
 #[path = "../m11_password_field.rs"]
 mod m11_password_field;
 #[path = "../m11_secret_layout.rs"]

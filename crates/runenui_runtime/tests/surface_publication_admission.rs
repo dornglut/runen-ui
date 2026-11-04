@@ -25,6 +25,30 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One measurement probe owner, with no initial output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // A provisional pointer source protects one possible continuation;
+        // the empty, unowned hover releases both credits after processing.
+        runenui_core::ProducerBudget::new(2, 0)
+    }
+
     type State = State;
     type Action = Replace;
     type HostProtocol = NoHostProtocol;
@@ -49,6 +73,22 @@ struct MeasureProbe {
 }
 
 impl Widget<Replace> for MeasureProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -133,7 +173,8 @@ fn prepared_runtime() -> (
     let mut runtime = AppRuntime::<App>::mount(State {
         replaced: false,
         measure_calls: Rc::clone(&measure_calls),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let style_environment = StyleEnvironment::default();
     let first = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -259,14 +300,17 @@ fn pump_quiescent(runtime: &mut AppRuntime<App>) -> bool {
 #[test]
 fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly() {
     let measure_calls = Rc::new(Cell::new(0));
-    let config = RuntimeConfig::default().with_queue_capacity(1);
+    // Publication funds the re-hit envelope plus a two-credit pointer turn.
+    // The pending move holds two credits; the empty hover releases them.
+    let config = RuntimeConfig::default().with_queue_capacity(3);
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State {
             replaced: false,
             measure_calls: Rc::clone(&measure_calls),
         },
         config,
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let style_environment = StyleEnvironment::default();
     let build_context =
         SurfaceBuildContext::new(&style_environment, LayoutConstraints::unbounded());

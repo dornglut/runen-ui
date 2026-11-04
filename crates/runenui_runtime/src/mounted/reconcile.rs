@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
-    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome,
-    ScrollControlBinding, ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation,
-    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
+    __runtime::{MountedWidget, MountedWidgetState, Subscription},
+    Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope,
+    Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome, ScrollControlBinding,
+    ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation, WidgetMountContext,
+    WidgetProducerBudget, WidgetProducerPhase, WidgetUnmountReason, WidgetUpdateContext,
+    WorkFamily, WorkStartBudget,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -14,7 +16,10 @@ use super::{
     apply_invalidation,
     invalidation::invalidate_semantic_structure,
     node::{MountedNode, state_is_corrupted},
-    tree::{MountedIdentityExhausted, MountedTree, ReconcileStats, checked_public_slot},
+    tree::{
+        InitialTreeMountError, MountedIdentityExhausted, MountedTree, ReconcileStats,
+        checked_public_slot,
+    },
 };
 
 /// Why a presently mounted lifetime must be revoked before reconciliation
@@ -81,7 +86,34 @@ pub(super) struct IncomingNode<Action> {
     shortcut_bindings: Vec<ShortcutBinding>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
+    state: Option<MountedWidgetState>,
+    mount_budget: Option<WidgetProducerBudget>,
+    initial_subscriptions: Option<Vec<Subscription<Action>>>,
     children: Vec<Self>,
+}
+
+pub(super) struct InitialWidgetBudget {
+    pub(super) mount_outputs: usize,
+    pub(super) work_starts: WorkStartBudget,
+    pub(super) mounted_subscriptions_per_owner: usize,
+}
+
+fn add_work_start_budgets(
+    left: WorkStartBudget,
+    right: WorkStartBudget,
+) -> Option<WorkStartBudget> {
+    Some(WorkStartBudget::new(
+        left.for_family(WorkFamily::LocalTask)
+            .checked_add(right.for_family(WorkFamily::LocalTask))?,
+        left.for_family(WorkFamily::SendTask)
+            .checked_add(right.for_family(WorkFamily::SendTask))?,
+        left.for_family(WorkFamily::Timer)
+            .checked_add(right.for_family(WorkFamily::Timer))?,
+        left.for_family(WorkFamily::HostRequest)
+            .checked_add(right.for_family(WorkFamily::HostRequest))?,
+        left.for_family(WorkFamily::FrameworkService)
+            .checked_add(right.for_family(WorkFamily::FrameworkService))?,
+    ))
 }
 
 impl<Action> IncomingNode<Action> {
@@ -125,8 +157,66 @@ impl<Action> IncomingNode<Action> {
             shortcut_bindings,
             authoring_diagnostics,
             widget,
+            state: None,
+            mount_budget: None,
+            initial_subscriptions: None,
             children: children.into_iter().map(Self::from_element).collect(),
         }
+    }
+
+    pub(super) fn prepare_initial(
+        &mut self,
+        mounted_subscriptions_per_owner: usize,
+    ) -> Result<InitialWidgetBudget, InitialTreeMountError> {
+        let state = self.widget.create_state();
+        let mount_budget = self
+            .widget
+            .producer_budget(&state, WidgetProducerPhase::Mount)
+            .map_err(|_| InitialTreeMountError::ProducerProfileExceeded)?;
+        let subscriptions_budget = self
+            .widget
+            .producer_budget(&state, WidgetProducerPhase::Subscriptions)
+            .map_err(|_| InitialTreeMountError::ProducerProfileExceeded)?;
+        if subscriptions_budget.subscription_declarations() > mounted_subscriptions_per_owner {
+            return Err(InitialTreeMountError::ProducerViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                    phase: runenui_core::ProducerPhase::Widget(WidgetProducerPhase::Subscriptions),
+                    component: runenui_core::BudgetComponent::MountedSubscriptionsPerOwner,
+                    declared: mounted_subscriptions_per_owner,
+                    attempted: Some(subscriptions_budget.subscription_declarations()),
+                },
+            ));
+        }
+        let mut summary = InitialWidgetBudget {
+            mount_outputs: mount_budget.outputs(),
+            work_starts: add_work_start_budgets(
+                mount_budget.work_starts(),
+                subscriptions_budget.work_starts(),
+            )
+            .ok_or(InitialTreeMountError::ProducerProfileExceeded)?,
+            mounted_subscriptions_per_owner: subscriptions_budget.subscription_declarations(),
+        };
+        self.state = Some(state);
+        self.mount_budget = Some(mount_budget);
+        // Declarations are collected when the canonical mounted-subscription
+        // reconciliation envelope is processed. Calling the user callback here
+        // would move observable work ahead of its accepted FIFO sequence.
+        self.initial_subscriptions = None;
+        for child in &mut self.children {
+            let child_summary = child.prepare_initial(mounted_subscriptions_per_owner)?;
+            summary.mount_outputs = summary
+                .mount_outputs
+                .checked_add(child_summary.mount_outputs)
+                .ok_or(InitialTreeMountError::ProducerProfileExceeded)?;
+            summary.work_starts =
+                add_work_start_budgets(summary.work_starts, child_summary.work_starts)
+                    .ok_or(InitialTreeMountError::ProducerProfileExceeded)?;
+            summary.mounted_subscriptions_per_owner = summary
+                .mounted_subscriptions_per_owner
+                .max(child_summary.mounted_subscriptions_per_owner);
+        }
+        Ok(summary)
     }
 
     pub(super) fn node_count(&self) -> Result<usize, MountedIdentityExhausted> {
@@ -258,6 +348,9 @@ fn apply_retained_authoring<Action>(
         shortcut_bindings,
         authoring_diagnostics,
         widget,
+        state: _,
+        mount_budget: _,
+        initial_subscriptions: _,
         children: _,
     } = incoming;
     let surface_presentation_changed = node.surface_presentation != surface_presentation;
@@ -399,6 +492,9 @@ impl<Action> MountedTree<Action> {
             shortcut_bindings,
             authoring_diagnostics,
             widget,
+            state: _,
+            mount_budget: _,
+            initial_subscriptions: _,
             children,
         } = incoming;
         let (removals, children) =
@@ -424,6 +520,9 @@ impl<Action> MountedTree<Action> {
                 shortcut_bindings,
                 authoring_diagnostics,
                 widget,
+                state: None,
+                mount_budget: None,
+                initial_subscriptions: None,
                 children: Vec::new(),
             },
             old_children,
@@ -562,7 +661,7 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn apply_reconciliation(
         &mut self,
         plan: ReconciliationPlan<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> Result<ReconcileStats<Action>, ReconciliationApplyError> {
         let ReconciliationPlan {
             root,
@@ -584,7 +683,7 @@ impl<Action> MountedTree<Action> {
         &mut self,
         plan: PlannedNode<Action>,
         stats: &mut ReconcileStats<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> Result<MountedNodeId, ReconciliationApplyError> {
         match plan {
             PlannedNode::Mount { parent, incoming } => {
@@ -602,7 +701,7 @@ impl<Action> MountedTree<Action> {
                     &path,
                     stats,
                     before_unmount,
-                );
+                )?;
                 Ok(self.mount_incoming(parent, incoming, stats))
             }
             PlannedNode::Retain {
@@ -621,7 +720,7 @@ impl<Action> MountedTree<Action> {
                         &removal.path,
                         stats,
                         before_unmount,
-                    );
+                    )?;
                 }
                 let new_children = children
                     .into_iter()
@@ -649,7 +748,21 @@ impl<Action> MountedTree<Action> {
         path: &str,
         stats: &mut ReconcileStats<Action>,
     ) -> Result<WidgetUpdateContext<Action>, ReconciliationApplyError> {
-        let mut update_context = WidgetUpdateContext::__runtime_new();
+        if stats.producer_violation.is_some() {
+            return Ok(WidgetUpdateContext::__runtime_new_bounded(0));
+        }
+        let update_budget = widget
+            .producer_budget(
+                &self
+                    .node(id)
+                    .unwrap_or_else(|| unreachable!("retained node remains live"))
+                    .state,
+                WidgetProducerPhase::Update,
+            )
+            .map_err(|_| ReconciliationApplyError)?;
+        let mut update_context =
+            WidgetUpdateContext::__runtime_new_bounded(update_budget.outputs());
+        update_context.__runtime_set_work_starts(update_budget.work_starts());
         let node = self
             .node_mut(id)
             .unwrap_or_else(|| unreachable!("planned retained node remains live"));
@@ -664,6 +777,10 @@ impl<Action> MountedTree<Action> {
                     path: path.to_owned(),
                 });
             return Err(ReconciliationApplyError);
+        }
+        if let Some(cause) = update_context.producer_violation() {
+            stats.producer_violation = stats.producer_violation.or(Some(cause));
+            stats.producer_overrun = true;
         }
         Ok(update_context)
     }
@@ -693,6 +810,31 @@ impl<Action> MountedTree<Action> {
         Ok(())
     }
 
+    fn invoke_mount(
+        &mut self,
+        id: &MountedNodeId,
+        mount_budget: WidgetProducerBudget,
+        stats: &mut ReconcileStats<Action>,
+    ) {
+        let mut context = WidgetMountContext::__runtime_new_bounded(mount_budget.outputs());
+        context.__runtime_set_work_starts(mount_budget.work_starts());
+        if let Some(node) = self.node_mut(id) {
+            if !stats.producer_overrun && node.widget.mount(&mut node.state, &mut context).is_err()
+            {
+                mark_mismatch(node, "mount", stats);
+            }
+            apply_invalidation(node, context.__runtime_take_invalidation());
+        }
+        stats.producer_violation = stats
+            .producer_violation
+            .or_else(|| context.producer_violation());
+        stats.producer_overrun |= context.__runtime_overflowed();
+        let outputs = context.__runtime_take_outputs();
+        if !outputs.is_empty() {
+            stats.mounted_outputs.push((id.clone(), outputs));
+        }
+    }
+
     pub(super) fn mount_incoming(
         &mut self,
         parent: Option<MountedNodeId>,
@@ -717,9 +859,20 @@ impl<Action> MountedTree<Action> {
             shortcut_bindings,
             authoring_diagnostics,
             widget,
+            state,
+            mount_budget,
+            initial_subscriptions,
             children,
         } = incoming;
-        let widget_state = widget.create_state();
+        let widget_state = state.unwrap_or_else(|| widget.create_state());
+        let mount_budget = mount_budget.unwrap_or_else(|| {
+            widget
+                .producer_budget(&widget_state, WidgetProducerPhase::Mount)
+                .unwrap_or_else(|_| {
+                    stats.producer_overrun = true;
+                    WidgetProducerBudget::default()
+                })
+        });
         let runtime = self.runtime.clone();
         let (slot, generation) = self
             .arena
@@ -750,6 +903,7 @@ impl<Action> MountedTree<Action> {
                     authoring_diagnostics,
                     widget,
                     state: widget_state,
+                    initial_subscriptions,
                     #[cfg(any(test, feature = "internal-test-seams"))]
                     state_corrupted: false,
                     interaction: InteractionState::default(),
@@ -764,17 +918,7 @@ impl<Action> MountedTree<Action> {
         let id = self.runtime.__runtime_mounted_id(public_slot, generation);
         stats.mounted += 1;
 
-        let mut context = WidgetMountContext::__runtime_new();
-        if let Some(node) = self.arena.get_mut(slot, generation) {
-            if node.widget.mount(&mut node.state, &mut context).is_err() {
-                mark_mismatch(node, "mount", stats);
-            }
-            apply_invalidation(node, context.__runtime_take_invalidation());
-        }
-        let outputs = context.__runtime_take_outputs();
-        if !outputs.is_empty() {
-            stats.mounted_outputs.push((id.clone(), outputs));
-        }
+        self.invoke_mount(&id, mount_budget, stats);
         stats.mounted_owners.push(id.clone());
         let mounted_children = children
             .into_iter()

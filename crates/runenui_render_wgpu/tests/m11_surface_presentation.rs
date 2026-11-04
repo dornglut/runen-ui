@@ -27,6 +27,19 @@ struct PaintProbe {
 }
 
 impl Widget<()> for PaintProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -48,6 +61,20 @@ impl Widget<()> for PaintProbe {
 struct PresentationRenderApp;
 
 impl UiApp for PresentationRenderApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 3 mounted owners; event allowance <= 0 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(6, 2).with_reconciliation(3, 3, 3)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 2).with_reconciliation(3, 3, 3)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 2).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -122,7 +149,8 @@ fn real_wgpu_consumes_runtime_presentation_band_without_renderer_popup_authority
     let Some(mut renderer) = renderer_or_skip()? else {
         return Ok(());
     };
-    let mut runtime = AppRuntime::<PresentationRenderApp>::mount(());
+    let mut runtime = AppRuntime::<PresentationRenderApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let size = LogicalSize::new(LogicalLength::from(64_u8), LogicalLength::from(64_u8));
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::tight(size))
@@ -144,6 +172,20 @@ fn real_wgpu_consumes_runtime_presentation_band_without_renderer_popup_authority
 struct StandardPresentationControlApp;
 
 impl UiApp for StandardPresentationControlApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 4 mounted owners; event allowance <= 1 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(31, 26).with_reconciliation(4, 4, 4)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(31, 26).with_reconciliation(4, 4, 4)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(31, 26).with_reconciliation(4, 4, 4)
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -190,7 +232,10 @@ fn standard_popover_and_dialog_render_through_existing_runtime_presentation_band
         .with_raster_scale(RasterScale::ONE);
 
     for dialog in [false, true] {
-        let mut runtime = AppRuntime::<StandardPresentationControlApp>::mount(dialog);
+        let mut runtime = AppRuntime::<StandardPresentationControlApp>::mount(dialog)
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
         let publication = runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("public presentation control publishes"));

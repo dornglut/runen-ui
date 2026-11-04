@@ -106,6 +106,23 @@ impl<Action> fmt::Debug for CommandScopeWidget<Action> {
     }
 }
 impl<Action> Widget<Action> for CommandScopeWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = CommandScopeWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -158,7 +175,7 @@ impl<Action> Widget<Action> for CommandScopeWidget<Action> {
         }
         context.consume_application_command(ApplicationCommandDisposition::Resolved);
         let action = (self.bindings[index].action_factory)();
-        context.emit(action);
+        let _ = context.try_emit(action);
         WidgetEventOutput::none()
     }
     fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
@@ -258,6 +275,23 @@ impl ShortcutScopeWidget {
 }
 
 impl<Action> Widget<Action> for ShortcutScopeWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ShortcutScopeWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -343,6 +377,23 @@ struct TextWidget {
 }
 
 impl<Action> Widget<Action> for TextWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = String;
     fn create_state(&self) -> Self::State {
         self.content.clone()
@@ -445,6 +496,23 @@ struct SelectableTextWidget {
 }
 
 impl<Action> Widget<Action> for SelectableTextWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = SelectableTextState;
 
     fn create_state(&self) -> Self::State {
@@ -685,6 +753,24 @@ impl<Action> fmt::Debug for ButtonWidget<Action> {
 }
 
 impl<Action> Widget<Action> for ButtonWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event | crate::WidgetProducerPhase::Activation => {
+                crate::WidgetProducerBudget::new(1)
+            }
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ButtonWidgetState;
     fn create_state(&self) -> Self::State {
         ButtonWidgetState {
@@ -785,7 +871,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         if let Some(factory) = self.activation_factory.as_mut() {
             context.prevent_default();
             context.stop_propagation();
-            context.emit(factory());
+            let _ = context.try_emit(factory());
         }
         WidgetEventOutput::none()
     }
@@ -1128,6 +1214,23 @@ impl<Action> fmt::Debug for BinaryControlWidget<Action> {
 }
 
 impl<Action> Widget<Action> for BinaryControlWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Activation => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = BinaryControlWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -1356,6 +1459,23 @@ struct RadioGroupWidgetState {
 }
 
 impl<Action> Widget<Action> for RadioGroupWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = RadioGroupWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -1401,7 +1521,7 @@ impl<Action> Widget<Action> for RadioGroupWidget {
         if let Some(delegated) = delegated {
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(delegated);
+            let _ = context.try_emit_command(delegated);
         }
         WidgetEventOutput::none()
     }
@@ -1668,6 +1788,23 @@ struct OptionItemWidgetState {
 }
 
 impl<Action> Widget<Action> for OptionItemWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Activation => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = OptionItemWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -1916,6 +2053,23 @@ impl ListBoxWidget {
 }
 
 impl<Action> Widget<Action> for ListBoxWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ListBoxWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -1990,7 +2144,7 @@ impl<Action> Widget<Action> for ListBoxWidget {
             }
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(delegated);
+            let _ = context.try_emit_command(delegated);
         }
         WidgetEventOutput::none()
     }
@@ -2242,6 +2396,23 @@ struct TabWidgetState {
 }
 
 impl<Action> Widget<Action> for TabWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Activation => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TabWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -2450,6 +2621,23 @@ struct TabListWidget {
 }
 
 impl<Action> Widget<Action> for TabListWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TabListWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -2518,7 +2706,7 @@ impl<Action> Widget<Action> for TabListWidget {
             }
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(delegated);
+            let _ = context.try_emit_command(delegated);
         }
         WidgetEventOutput::none()
     }
@@ -2664,6 +2852,23 @@ struct TabPanelWidget {
 }
 
 impl<Action> Widget<Action> for TabPanelWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TabPanelWidgetState;
 
     fn create_state(&self) -> Self::State {
@@ -2835,7 +3040,7 @@ fn emit_scroll_bar_request<Action>(
     context: &mut EventContext<'_, Action>,
     request: ScrollControlRequest,
 ) {
-    context.emit_command(SemanticCommand::ScrollControl(request));
+    let _ = context.try_emit_command(SemanticCommand::ScrollControl(request));
     context.prevent_default();
     context.stop_propagation();
 }
@@ -2916,6 +3121,25 @@ struct ScrollBarWidget {
 }
 
 impl<Action> Widget<Action> for ScrollBarWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            // Track paging emits one ScrollControl semantic command from its
+            // target callback when the pointer lands before or after the thumb.
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -3036,7 +3260,7 @@ impl ScrollBarThumbWidget {
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         if state.drag.take().is_some() {
-            context.release_pointer_capture();
+            let _ = context.try_release_pointer_capture();
             context.prevent_default();
             context.stop_propagation();
             WidgetEventOutput::changed()
@@ -3047,6 +3271,23 @@ impl ScrollBarThumbWidget {
 }
 
 impl<Action> Widget<Action> for ScrollBarThumbWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ScrollBarThumbState;
 
     fn create_state(&self) -> Self::State {
@@ -3106,7 +3347,7 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                     pointer_id: pointer.pointer_id(),
                     grab_offset: coordinate.clamp(0.0, geometry.thumb_extent().get()),
                 });
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
                 context.stop_propagation();
                 WidgetEventOutput::changed()
             }
@@ -3280,6 +3521,23 @@ impl<Action> ScrollContainer<Action> {
 struct ScrollCornerWidget;
 
 impl<Action> Widget<Action> for ScrollCornerWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -3379,6 +3637,23 @@ impl<Action> ScrollViewport<Action> {
 struct ScrollViewportWidget;
 
 impl<Action> Widget<Action> for ScrollViewportWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -3462,6 +3737,23 @@ impl<Action> Container<Action> {
 struct GroupWidget;
 
 impl<Action> Widget<Action> for GroupWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn semantics(
@@ -3573,4 +3865,32 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
 fn local_rect(size: LogicalSize) -> LogicalRect {
     LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
         .unwrap_or_else(|_| unreachable!("validated local size yields a valid local rectangle"))
+}
+
+#[cfg(test)]
+mod scrollbar_producer_budget_tests {
+    use super::*;
+
+    #[test]
+    fn track_page_command_has_one_event_output_credit() {
+        let widget = ScrollBarWidget {
+            label: "Vertical scroll".into(),
+            layout: ScrollBarLayout::new(
+                Axis::Vertical,
+                LogicalLength::new(10.0).unwrap_or_else(|_| unreachable!()),
+                LogicalLength::new(20.0).unwrap_or_else(|_| unreachable!()),
+            ),
+        };
+
+        assert_eq!(
+            <ScrollBarWidget as Widget<()>>::producer_budget(
+                &widget,
+                crate::WidgetProducerPhase::Event,
+                &(),
+            )
+            .outputs(),
+            1,
+            "the track target may emit one paging ScrollControl command"
+        );
+    }
 }

@@ -1,3 +1,16 @@
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, FrameworkServiceRequest,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticCommand, StyleEnvironment,
@@ -14,6 +27,31 @@ const SOURCE: &str = "read-only documentation";
 struct SelectableApp;
 
 impl UiApp for SelectableApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single read-only selectable-text widget has one initial reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Read-only text routes can publish the same bounded event outputs and
+        // request a clipboard service for a supported Copy command.
+        runenui_core::ProducerBudget::new(6, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -50,7 +88,7 @@ fn pump_selectable(runtime: &mut AppRuntime<SelectableApp>, max_envelopes: usize
 
 #[test]
 fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
-    let mut runtime = AppRuntime::<SelectableApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<SelectableApp>::mount(()));
     assert!(
         runtime
             .register_text_font_bytes(FONT.to_vec())
@@ -142,9 +180,7 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     // Copy is handled by the existing framework-service FIFO, not a widget
     // callback or a parallel selection/clipboard model.
     let owner = runtime.index().nodes()[0].id().clone();
-    runtime
-        .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("read-only copy command routes"));
+    admitted!(runtime.submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic()));
     pump_selectable(&mut runtime, 16);
     assert!(runtime.pending_framework_services().iter().any(|service| {
         matches!(

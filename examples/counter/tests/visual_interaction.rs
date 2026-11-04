@@ -112,7 +112,11 @@ fn target_point(publication: &SurfacePublication, authored: &str) -> LogicalPoin
 #[test]
 fn counter_button_recipes_resolve_without_style_diagnostics() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
     let publication = publish(&mut runtime, &environment);
 
@@ -143,7 +147,11 @@ fn counter_button_recipes_resolve_without_style_diagnostics() {
 #[test]
 fn stepper_pair_stays_grouped_and_reset_wraps_on_narrow_surfaces() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
 
     let wide = publish(&mut runtime, &environment);
@@ -199,7 +207,11 @@ fn stepper_pair_stays_grouped_and_reset_wraps_on_narrow_surfaces() {
 #[test]
 fn counter_centers_with_free_height_and_keeps_tight_overflow_top_reachable() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
 
     let normal = publish(&mut runtime, &environment);
@@ -286,7 +298,11 @@ fn focused_hover_fixture(
 #[test]
 fn canonical_hover_and_focus_facts_drive_counter_visual_feedback() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
 
     let initial = publish(&mut runtime, &environment);
@@ -350,7 +366,11 @@ fn canonical_hover_and_focus_facts_drive_counter_visual_feedback() {
 #[test]
 fn canonical_active_and_release_facts_drive_counter_visual_feedback() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
     let (pointer_id, point, focused_hover) = focused_hover_fixture(&mut runtime, &environment);
 
@@ -410,7 +430,7 @@ fn canonical_active_and_release_facts_drive_counter_visual_feedback() {
         )
         .unwrap_or_else(|_| unreachable!("Counter primary release is admitted"));
     pump_all(&mut runtime);
-    assert_eq!(runtime.state().count, 1);
+    assert_eq!(runtime.state().counter.count, 1);
 
     let release_start = publish(&mut runtime, &environment);
     assert_eq!(
@@ -437,7 +457,11 @@ fn canonical_active_and_release_facts_drive_counter_visual_feedback() {
 #[test]
 fn win_screen_reuses_the_shell_and_transitions_its_background() {
     let environment = ui::style_environment();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 9 });
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter { count: 9 }))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     pump_all(&mut runtime);
 
     let initial = publish(&mut runtime, &environment);
@@ -459,7 +483,7 @@ fn win_screen_reuses_the_shell_and_transitions_its_background() {
         .submit_action(CounterAction::Increment)
         .unwrap_or_else(|_| unreachable!("Counter increment action is admitted"));
     pump_all(&mut runtime);
-    assert_eq!(runtime.state().count, 10);
+    assert_eq!(runtime.state().counter.count, 10);
 
     let started = publish(&mut runtime, &environment);
     let started_root = started

@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     Brush, Color, Element, FontFamilyName, GenericFontFamily, LayoutDimension, LayoutStyle,
@@ -112,6 +124,28 @@ fn find_stroke(publication: &SurfacePublication, color: Color) -> usize {
 struct BuiltinBackgroundApp;
 
 impl UiApp for BuiltinBackgroundApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -128,7 +162,7 @@ impl UiApp for BuiltinBackgroundApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn builtin_background_has_one_runtime_publication_authority() {
-    let mut runtime = AppRuntime::<BuiltinBackgroundApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<BuiltinBackgroundApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -152,6 +186,22 @@ fn builtin_background_has_one_runtime_publication_authority() {
 struct LayeredTextPaint;
 
 impl Widget<()> for LayeredTextPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -170,6 +220,28 @@ impl Widget<()> for LayeredTextPaint {
 struct LayeredTextApp;
 
 impl UiApp for LayeredTextApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -188,7 +260,7 @@ impl UiApp for LayeredTextApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn rounded_decoration_preserves_m6_layer_and_local_text_order() {
-    let mut runtime = AppRuntime::<LayeredTextApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<LayeredTextApp>::mount(()));
     register_font(&mut runtime);
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
@@ -274,6 +346,22 @@ fn rounded_decoration_preserves_m6_layer_and_local_text_order() {
 struct ExplicitGroupedPaint;
 
 impl Widget<()> for ExplicitGroupedPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -292,6 +380,28 @@ impl Widget<()> for ExplicitGroupedPaint {
 struct DecorationGroupingApp;
 
 impl UiApp for DecorationGroupingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -317,7 +427,7 @@ fn only_group(entry: runenui_runtime::PaintSceneEntry) -> PaintSceneGroupId {
 
 #[test]
 fn runtime_decoration_stays_outside_explicit_group_but_inside_node_effect_group() {
-    let mut runtime = AppRuntime::<DecorationGroupingApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<DecorationGroupingApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 

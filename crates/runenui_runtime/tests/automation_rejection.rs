@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{ElementId, NoHostProtocol, SemanticCommand, UiApp, View, button};
 use runenui_runtime::{
@@ -14,6 +26,29 @@ enum Action {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The root button's initial mounted-subscription reconciliation is
+        // queued after its mount callback; it declares no subscriptions.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The button route and its activation each have one output allowance.
+        runenui_core::ProducerBudget::new(2, 2)
+    }
+
     type State = usize;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -52,7 +87,7 @@ fn authored_id() -> ElementId {
 
 #[test]
 fn trace_exhaustion_rejects_automation_without_terminalizing_or_consuming_authority() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     settle(&mut runtime);
     let trace_len = runtime.trace().len();
     runtime.__seed_next_trace_sequence_for_test(0);
@@ -85,16 +120,14 @@ fn trace_exhaustion_rejects_automation_without_terminalizing_or_consuming_author
     );
 
     runtime.__seed_next_trace_sequence_for_test(100);
-    runtime
-        .submit_automation_command(authored_id(), SemanticCommand::Activate)
-        .unwrap_or_else(|_| unreachable!("runtime remains usable after rejection"));
+    admitted!(runtime.submit_automation_command(authored_id(), SemanticCommand::Activate));
     settle(&mut runtime);
     assert_eq!(runtime.state(), &1);
 }
 
 #[test]
 fn work_sequence_exhaustion_rejects_after_resolution_without_terminalizing() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     settle(&mut runtime);
     runtime.__seed_next_work_sequence_for_test(0);
 
@@ -103,10 +136,14 @@ fn work_sequence_exhaustion_rejects_after_resolution_without_terminalizing() {
     else {
         unreachable!("work-sequence exhaustion rejects automation ingress");
     };
-    assert!(matches!(
-        error.kind(),
-        SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::WorkSequenceExhausted)
-    ));
+    assert!(
+        matches!(
+            error.kind(),
+            SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::WorkSequenceExhausted)
+        ),
+        "unexpected typed rejection: {:?}",
+        error.kind()
+    );
     assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state(), &0);

@@ -30,6 +30,104 @@ struct Model {
 struct NestedApp;
 
 impl UiApp for NestedApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let initial_nodes = if state.child_open { 7 } else { 5 };
+        runenui_core::ProducerBudget::new(initial_nodes, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(initial_nodes, 0, initial_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mut queue_credits = 1;
+        let mut outputs = 0;
+        let mut mounted_nodes = 0;
+        let mut retained_updates = 0;
+        let mut dirty_owners = 0;
+        for old_open in [false, true] {
+            let child_open = match action {
+                Action::ShowChild => true,
+                Action::HideChild | Action::DismissChild => false,
+                Action::DismissParent | Action::Noop => old_open,
+            };
+            let changed = child_open != old_open;
+            let old_nodes: usize = if old_open { 7 } else { 5 };
+            let new_nodes: usize = if child_open { 7 } else { 5 };
+            let added_nodes = new_nodes.saturating_sub(old_nodes);
+            let widget_events = if old_open { 10 } else { 6 };
+            let candidate_outputs = if changed { 4 * widget_events + 1 } else { 0 };
+            // Retiring the child queues focus restoration through the surviving
+            // five-node Menu tree. Its measured route and deferred focus callbacks
+            // require 33 root credits after the action's own reconciliation.
+            let focus_restore_outputs = usize::from(old_open && !child_open) * 33;
+            let candidate_queue_credits =
+                added_nodes + usize::from(changed) + focus_restore_outputs;
+            queue_credits = queue_credits.max(candidate_queue_credits.max(1));
+            outputs = outputs.max(candidate_outputs);
+            mounted_nodes = mounted_nodes.max(added_nodes);
+            retained_updates = retained_updates.max(old_nodes.min(new_nodes));
+            dirty_owners = dirty_owners.max(added_nodes);
+        }
+        runenui_core::ProducerBudget::new(queue_credits.max(1), outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let widget_events = 6 + if state.child_open { 4 } else { 0 };
+        let max_route_outputs = if state.child_open { 17 } else { 9 };
+        // A native key may run its ordinary route, enqueue a semantic default,
+        // and trigger focus notifications while the application retires nodes.
+        let interaction_outputs = 4 * widget_events + 2 * max_route_outputs + 1;
+        let routed_actions = [
+            Action::ShowChild,
+            Action::HideChild,
+            Action::DismissParent,
+            Action::DismissChild,
+            Action::Noop,
+        ]
+        .map(|action| Self::action_producer_budget(state, &action));
+        let routed_queue_credits = routed_actions
+            .iter()
+            .map(|profile| profile.queue_credits())
+            .max()
+            .unwrap_or(1);
+        let routed_outputs = routed_actions
+            .iter()
+            .map(|profile| profile.outputs())
+            .max()
+            .unwrap_or(0);
+        let mounted_nodes = routed_actions
+            .iter()
+            .map(|profile| profile.mounted_nodes())
+            .max()
+            .unwrap_or(0);
+        let retained_updates = routed_actions
+            .iter()
+            .map(|profile| profile.retained_updates())
+            .max()
+            .unwrap_or(0);
+        let dirty_owners = routed_actions
+            .iter()
+            .map(|profile| profile.dirty_subscription_owners())
+            .max()
+            .unwrap_or(0);
+        runenui_core::ProducerBudget::new(
+            interaction_outputs.max(routed_queue_credits),
+            interaction_outputs.max(routed_outputs),
+        )
+        .with_application_outputs(0)
+        .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+        .with_subscriptions(0, 0)
+        .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = Model;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -144,7 +242,8 @@ fn c6_child_origin_never_dismisses_parent_after_child_retirement() {
         child_open: true,
         parent_dismissals: 0,
         child_dismissals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     full(&mut runtime);
     let child_item = mounted(&mut runtime, "child-action");
@@ -181,7 +280,8 @@ fn c6_parent_origin_cannot_dismiss_newly_published_nested_child() {
         child_open: false,
         parent_dismissals: 0,
         child_dismissals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     full(&mut runtime);
     let parent_item = mounted(&mut runtime, "parent-action");

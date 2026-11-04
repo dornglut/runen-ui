@@ -41,16 +41,39 @@ App::new()
 
 **This code is an authorized target public contract, not yet a shipped API.** An unmerged delivery draft may compile it; that is not production acceptance. The fluent `App` is a small configuration/composition facade, **not** a new runtime. Its purpose is to let the user supply UI state and optional window intent while hiding ordinary native bootstrap. The existing `AppRuntime` remains the sole live mounted/input/work/publication authority.
 
-The straightforward type-safe approach needs **no `CounterApp` marker**: make the application state itself implement the existing `UiApp` contract with `type State = Self`. The current accepted trait supports that relationship directly:
+The straightforward type-safe approach needs **no `CounterApp` marker**: make the application state itself implement the existing `UiApp` contract with `type State = Self`. The trait supports that relationship directly. The example below also includes the explicit producer-budget promises required by #475; those finite promises belong to the application and must not be invented by the optional native host:
 
 ```rust
 struct Counter { count: i32 }
 enum CounterAction { Increment }
 
+impl Counter {
+    const fn new() -> Self { Self { count: 0 } }
+
+    // This one-text-leaf, zero-work example has a closed finite bound.
+    // Real applications must derive promises from their own output and
+    // reconciliation demands, rather than copy a generic budget.
+    const fn producer_budget() -> ProducerBudget {
+        ProducerBudget::new(4, 0).with_reconciliation(2, 2, 2)
+    }
+}
+
 impl UiApp for Counter {
     type State = Self;
     type Action = CounterAction;
     type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &Self) -> ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(_: &Self, _: &Self::Action) -> ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_: &Self) -> ProducerBudget {
+        Self::producer_budget()
+    }
 
     fn root(state: &Self) -> impl View<Self::Action> {
         text(format!("Count: {}", state.count))

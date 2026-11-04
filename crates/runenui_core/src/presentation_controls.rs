@@ -14,6 +14,7 @@ use crate::{
     SemanticRole, SemanticState, SurfacePresentation, SurfacePresentationAnchor,
     SurfacePresentationPlacement, SurfacePresentationSide, Text, TimerEffect, UiEvent, View, Views,
     Widget, WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext, WorkFamily, WorkKey,
+    WorkStartBudget,
     element::{CommonNodeAuthoring, Element, common_node_builder_methods},
     widget_erasure::WidgetAdapter,
     widget_protocol::ChildBearingWidget,
@@ -195,6 +196,23 @@ struct PresentationSurfaceState {
 }
 
 impl<Action> Widget<Action> for PresentationSurfaceWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = PresentationSurfaceState;
 
     fn create_state(&self) -> Self::State {
@@ -224,7 +242,7 @@ impl<Action> Widget<Action> for PresentationSurfaceWidget<Action> {
             && let SemanticCommand::PresentationDismiss(reason) = command.command()
             && let Some(callback) = self.on_dismiss.as_mut()
         {
-            context.emit(callback(reason));
+            let _ = context.try_emit(callback(reason));
         }
         WidgetEventOutput::none()
     }
@@ -433,19 +451,37 @@ impl<Action: 'static> TooltipTriggerWidget<Action> {
         let hide_key = WorkKey::new("runenui.tooltip.hide")
             .unwrap_or_else(|_| unreachable!("static work key is valid"));
         if active {
-            context.cancel(WorkFamily::Timer, hide_key);
+            let _ = context.try_cancel(WorkFamily::Timer, hide_key);
             let show = Rc::clone(&self.show);
-            context.timer(
+            let _ = context.try_timer(
                 TimerEffect::once(self.delay, move || (show.borrow_mut())()).keyed(show_key),
             );
         } else {
-            context.cancel(WorkFamily::Timer, show_key);
-            context.emit((self.hide.borrow_mut())());
+            let _ = context.try_cancel(WorkFamily::Timer, show_key);
+            let _ = context.try_emit((self.hide.borrow_mut())());
         }
     }
 }
 
 impl<Action: 'static> Widget<Action> for TooltipTriggerWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(2)
+                .with_work_starts(WorkStartBudget::new(0, 0, 1, 0, 0)),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TooltipTriggerState;
 
     fn create_state(&self) -> Self::State {

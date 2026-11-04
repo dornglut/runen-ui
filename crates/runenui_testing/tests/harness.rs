@@ -18,6 +18,29 @@ enum Action {
 struct HarnessApp;
 
 impl UiApp for HarnessApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // 3 fixed mounted owners, each with one initial subscription reconciliation.
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(3, 0, 3)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Updates retain the same fixed tree and start no app or subscription work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 3, 0)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Routed/default outputs and their fixed-tree action descendants.
+        // Ten possible route/boundary/focus/capture callback outputs, plus
+        // activation and cursor; retain both cursor outcome pairs and cleanup.
+        runenui_core::ProducerBudget::new(16, 12)
+            .with_reconciliation(0, 3, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = i32;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -58,8 +81,116 @@ fn settle_budget() -> SettleBudget {
 }
 
 #[test]
+fn initial_refusal_returns_nonclone_state_and_both_configurations_for_retry() {
+    use runenui_core::{
+        Element, ProducerBudget, Widget, WidgetProducerBudget, WidgetProducerPhase,
+    };
+    use runenui_runtime::{InitialAdmissionErrorKind, LogicalSize, RuntimeConfig};
+    use runenui_testing::TestSurfaceConfig;
+    use std::{cell::Cell, rc::Rc};
+
+    struct OwnedState {
+        marker: Box<u8>,
+        callbacks: Rc<Cell<usize>>,
+    }
+
+    #[derive(Debug)]
+    struct Leaf(Rc<Cell<usize>>);
+
+    impl Widget<()> for Leaf {
+        type State = ();
+        fn create_state(&self) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn producer_budget(&self, phase: WidgetProducerPhase, (): &()) -> WidgetProducerBudget {
+            match phase {
+                WidgetProducerPhase::Subscriptions => {
+                    WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => WidgetProducerBudget::new(0),
+            }
+        }
+    }
+
+    struct OwnedApp;
+    impl UiApp for OwnedApp {
+        type State = OwnedState;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+        fn root(state: &OwnedState) -> impl View<()> {
+            Element::new(Leaf(Rc::clone(&state.callbacks)))
+        }
+        fn initial_producer_budget(_: &OwnedState) -> ProducerBudget {
+            ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+        }
+        fn action_producer_budget(_: &OwnedState, (): &()) -> ProducerBudget {
+            ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+        }
+        fn interaction_producer_budget(_: &OwnedState) -> ProducerBudget {
+            ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+        }
+        fn initial_effects(
+            state: &OwnedState,
+        ) -> impl runenui_core::IntoEffects<(), NoHostProtocol> {
+            state.callbacks.set(state.callbacks.get() + 1);
+        }
+        fn update(
+            _: &mut OwnedState,
+            (): (),
+        ) -> impl runenui_core::IntoUpdateOutput<(), NoHostProtocol> {
+        }
+    }
+
+    let callbacks = Rc::new(Cell::new(0));
+    let marker = Box::new(73);
+    let address = std::ptr::from_ref(marker.as_ref());
+    let surface = TestSurfaceConfig::new(LogicalSize::new(
+        LogicalLength::from(317_u16),
+        LogicalLength::from(239_u16),
+    ))
+    .unwrap_or_else(|_| unreachable!("positive fixed surface extents are valid"));
+    let Err(error) = TestHarness::<OwnedApp>::mount_with_config(
+        OwnedState {
+            marker,
+            callbacks: Rc::clone(&callbacks),
+        },
+        RuntimeConfig::default().with_queue_capacity(0),
+        surface.clone(),
+    ) else {
+        unreachable!("zero capacity cannot admit the one-owner initial frontier");
+    };
+    assert_eq!(
+        error.admission_error().kind(),
+        InitialAdmissionErrorKind::Capacity
+    );
+    assert_eq!(error.admission_error().config().queue_capacity(), 0);
+    assert_eq!(error.surface_config(), &surface);
+    assert_eq!(
+        std::ptr::from_ref(error.admission_error().state().marker.as_ref()),
+        address
+    );
+    assert_eq!(callbacks.get(), 0);
+    let (admission, returned_surface) = error.into_parts();
+    let (state, config) = admission.into_parts();
+    let mut harness = TestHarness::<OwnedApp>::mount_with_config(
+        state,
+        config.with_queue_capacity(1),
+        returned_surface,
+    )
+    .unwrap_or_else(|error| unreachable!("the exact one-owner frontier fits: {error}"));
+    assert_eq!(std::ptr::from_ref(harness.state().marker.as_ref()), address);
+    assert_eq!(harness.surface_config(), &surface);
+    assert_eq!(callbacks.get(), 2);
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+}
+
+#[test]
 fn semantic_query_action_and_replay_use_only_public_authority() {
-    let mut harness = TestHarness::<HarnessApp>::mount(0);
+    let mut harness = TestHarness::<HarnessApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let query = SemanticQuery::new()
@@ -85,7 +216,8 @@ fn semantic_query_action_and_replay_use_only_public_authority() {
 
 #[test]
 fn ambiguous_semantic_queries_preserve_all_matches_without_fallback() {
-    let mut harness = TestHarness::<HarnessApp>::mount(0);
+    let mut harness = TestHarness::<HarnessApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let matches = harness.query_semantics(&SemanticQuery::new().with_role(SemanticRole::Button));
@@ -102,7 +234,8 @@ fn ambiguous_semantic_queries_preserve_all_matches_without_fallback() {
 
 #[test]
 fn settle_is_bounded_and_publication_dirtiness_does_not_force_hidden_work() {
-    let mut harness = TestHarness::<HarnessApp>::mount(0);
+    let mut harness = TestHarness::<HarnessApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let settled = harness.run_until_idle(settle_budget());
     assert_eq!(settled.outcome(), SettleOutcome::Idle);
     assert!(settled.last_pump().publication_dirty());
@@ -110,7 +243,8 @@ fn settle_is_bounded_and_publication_dirtiness_does_not_force_hidden_work() {
 
 #[test]
 fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
-    let mut harness = TestHarness::<HarnessApp>::mount(0);
+    let mut harness = TestHarness::<HarnessApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let Some((expected_context, point, expected_target)) = (|| {
         let publication = harness.publish().ok()?;
         let authored = ElementId::new("harness.increment").ok()?;

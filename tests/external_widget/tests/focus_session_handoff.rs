@@ -31,6 +31,22 @@ struct State {
 struct TextProbe;
 
 impl Widget<Action> for TextProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn text_input(&self, (): &()) -> WidgetTextInput {
@@ -40,6 +56,44 @@ impl Widget<Action> for TextProbe {
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let initial_nodes = if state.p_open { 5 } else { 3 };
+        runenui_core::ProducerBudget::new(initial_nodes, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(initial_nodes, 0, initial_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let next_open = match action {
+            Action::ShowP => true,
+            Action::HideP => false,
+            Action::Noop => state.p_open,
+        };
+        let changed = state.p_open != next_open;
+        let old_nodes: usize = if state.p_open { 5 } else { 3 };
+        let new_nodes: usize = if next_open { 5 } else { 3 };
+        let mounted_nodes = new_nodes.saturating_sub(old_nodes);
+        let retained_updates = if changed { old_nodes.min(new_nodes) } else { 0 };
+        let dirty_owners = if changed { new_nodes } else { 0 };
+        runenui_core::ProducerBudget::new((dirty_owners + usize::from(changed)).max(1), 0)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // Focus handoff can notify the trigger, menu container, and menu item
+        // four times each; the deepest ordinary route adds nine more outputs.
+        let outputs = if state.p_open { 29 } else { 5 };
+        runenui_core::ProducerBudget::new(outputs, outputs).with_application_outputs(0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -122,7 +176,8 @@ fn key() -> KeyboardEvent {
 fn pending_published_entry_binds_non_escape_to_exact_recipient_with_one_m13_settlement() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
-    let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: false })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!());
@@ -195,7 +250,8 @@ fn pending_published_entry_binds_non_escape_to_exact_recipient_with_one_m13_sett
 fn pending_entry_never_transfers_ambiguous_committed_text() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
-    let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: false })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!());
@@ -230,7 +286,8 @@ fn pending_entry_never_transfers_ambiguous_committed_text() {
 fn retired_pending_presentation_entry_rejects_without_retarged_keyboard() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
-    let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: false })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!());
@@ -278,7 +335,8 @@ fn retired_pending_presentation_entry_rejects_without_retarged_keyboard() {
 fn exact_noop_presentation_entry_certifies_the_unchanged_focused_recipient() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
-    let mut runtime = AppRuntime::<App>::mount(State { p_open: true });
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: true })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     // An eligible mounted recipient can already hold focus before the
     // first interaction publication schedules EnterAndRestore for it.
     focus(&mut runtime, "p-item");

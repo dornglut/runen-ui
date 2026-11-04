@@ -33,7 +33,7 @@ const RETIRED_PRODUCTION_AUTHORITIES: [&str; 6] = [
 fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> Result<(), String> {
     let root = workspace_root()?;
     let taffy_layout = read(&root.join(TAFFY_LAYOUT))?;
-    let resolve = read(&root.join(RESOLVE))?;
+    let resolve = read(&root.join(RESOLVE))?.replace("\r\n", "\n");
 
     for required in [
         "let request = TextRequest::new(content, typography, constraints)",

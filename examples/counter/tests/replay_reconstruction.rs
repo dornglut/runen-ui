@@ -178,7 +178,11 @@ fn reconstructs_counter_activation(replay: &TraceReplay) -> bool {
 
 #[allow(clippy::assert_is_empty)]
 fn counter_jsonl() -> String {
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     settle(&mut runtime);
 
     runtime
@@ -193,7 +197,7 @@ fn counter_jsonl() -> String {
         .submit_keyboard(enter_down())
         .unwrap_or_else(|_| unreachable!("focused increment accepts raw Enter"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().count, 1);
+    assert_eq!(runtime.state().counter.count, 1);
 
     let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, SURFACE_SIZE);

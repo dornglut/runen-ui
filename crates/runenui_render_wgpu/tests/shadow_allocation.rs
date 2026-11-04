@@ -24,6 +24,19 @@ struct OversizedShadowFixture {
 }
 
 impl Widget<()> for OversizedShadowFixture {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -53,6 +66,20 @@ impl Widget<()> for OversizedShadowFixture {
 struct OversizedShadowApp;
 
 impl UiApp for OversizedShadowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One inert paint owner has one initial subscription reconciliation and no outputs.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = f32;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -84,7 +111,8 @@ impl ResourceProvider for CountingProvider {
 }
 
 fn publication(side: f32) -> runenui_runtime::PaintPublication {
-    let mut runtime = AppRuntime::<OversizedShadowApp>::mount(side);
+    let mut runtime = AppRuntime::<OversizedShadowApp>::mount(side)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
         .unwrap_or_else(|_| unreachable!("controlled surface size is valid"));

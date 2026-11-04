@@ -135,6 +135,27 @@ struct LocalState {
 struct LocalApp;
 
 impl UiApp for LocalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 2, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = LocalState;
     type Action = LocalAction;
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -153,7 +174,7 @@ impl UiApp for LocalApp {
             return;
         }
         for (index, control) in state.controls.iter().enumerate() {
-            subscriptions.local(
+            let _ = subscriptions.try_local(
                 key(if index == 0 {
                     "local.first"
                 } else {
@@ -178,7 +199,8 @@ fn local_sources_share_budget_sleep_wake_in_order_and_stop_after_cancellation() 
         active: true,
         controls: [Arc::clone(&first), Arc::clone(&second)],
         updates: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let first_report = runtime
         .pump(PumpBudget::new(16, usize::MAX, 1, usize::MAX))
@@ -300,6 +322,27 @@ struct SendState {
 struct SendApp;
 
 impl UiApp for SendApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = SendState;
     type Action = Rc<()>;
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -312,7 +355,7 @@ impl UiApp for SendApp {
 
     fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
         let mapped = Rc::clone(&state.mapped);
-        subscriptions.send(
+        let _ = subscriptions.try_send(
             key("send.bounded"),
             0,
             RecoveringSendSource {
@@ -342,7 +385,8 @@ fn send_source_starts_once_and_full_or_closed_sink_returns_the_exact_item() {
             mapped: Rc::clone(&mapped),
         },
         RuntimeConfig::default().with_limits(limits),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
@@ -436,6 +480,40 @@ struct StartState {
 struct StartOutcomeApp;
 
 impl UiApp for StartOutcomeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            StartAction::Disable => runenui_core::ProducerBudget::new(1, 0),
+            // Retry can cancel an existing generation and start its replacement;
+            // Item can restart a previously refused desired source.
+            StartAction::Retry | StartAction::Item => runenui_core::ProducerBudget::new(
+                if matches!(action, StartAction::Retry) {
+                    3
+                } else {
+                    2
+                },
+                0,
+            )
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0)),
+        }
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = StartState;
     type Action = StartAction;
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -460,7 +538,7 @@ impl UiApp for StartOutcomeApp {
             return;
         }
         let control = Arc::clone(&state.control);
-        subscriptions.send(
+        let _ = subscriptions.try_send(
             key("send.start-outcome"),
             state.revision,
             OutcomeSource {
@@ -490,7 +568,8 @@ fn start_runtime(
         outcome,
         revision: 0,
         active: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     (runtime, control)
 }
 
@@ -758,6 +837,28 @@ impl SendSubscriptionSource<u8> for CountingSource {
 struct InitialReplacementApp;
 
 impl UiApp for InitialReplacementApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = InitialReplacementState;
     type Action = InitialReplacementAction;
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -790,7 +891,7 @@ impl UiApp for InitialReplacementApp {
         } else {
             Rc::clone(&state.new_maps)
         };
-        subscriptions.send(
+        let _ = subscriptions.try_send(
             key("initial.replacement"),
             state.revision,
             CountingSource { starts },
@@ -814,7 +915,8 @@ fn initial_effect_action_replaces_the_old_subscription_before_its_start_callback
         new_starts: Arc::clone(&new_starts),
         old_maps: Rc::clone(&old_maps),
         new_maps: Rc::clone(&new_maps),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
@@ -831,6 +933,27 @@ fn initial_effect_action_replaces_the_old_subscription_before_its_start_callback
 struct ExactLocalSubscriptionApp;
 
 impl UiApp for ExactLocalSubscriptionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Rc<Cell<usize>>;
     type Action = ();
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -843,7 +966,7 @@ impl UiApp for ExactLocalSubscriptionApp {
 
     fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
         let calls = Rc::clone(state);
-        subscriptions.local(
+        let _ = subscriptions.try_local(
             key("exact.local"),
             0,
             move |_: &mut core::task::Context<'_>| {
@@ -858,7 +981,8 @@ impl UiApp for ExactLocalSubscriptionApp {
 #[test]
 fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     let local_calls = Rc::new(Cell::new(0));
-    let mut local = AppRuntime::<ExactLocalSubscriptionApp>::mount(Rc::clone(&local_calls));
+    let mut local = AppRuntime::<ExactLocalSubscriptionApp>::mount(Rc::clone(&local_calls))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = local
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))

@@ -6,8 +6,45 @@ use super::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CommitError {
+    ProducerViolation(runenui_core::ProducerContractViolation),
     Queue,
     Registry,
+}
+
+impl CommitError {
+    pub(crate) const fn integrity_failure(self) -> crate::TraceRoutedIntegrityFailure {
+        match self {
+            Self::ProducerViolation(cause) => {
+                crate::TraceRoutedIntegrityFailure::ProducerViolation(cause)
+            }
+            Self::Queue | Self::Registry => {
+                crate::TraceRoutedIntegrityFailure::CommitInvariantFailure
+            }
+        }
+    }
+    pub(crate) const fn terminal_reason(self) -> crate::RuntimeTerminalReason {
+        match self {
+            Self::ProducerViolation(cause) => {
+                crate::RuntimeTerminalReason::ProducerContractViolation(cause)
+            }
+            Self::Queue | Self::Registry => crate::RuntimeTerminalReason::Poisoned,
+        }
+    }
+}
+impl From<()> for CommitError {
+    fn from((): ()) -> Self {
+        Self::Registry
+    }
+}
+impl From<crate::transaction::TransactionPlanError> for CommitError {
+    fn from(error: crate::transaction::TransactionPlanError) -> Self {
+        match error {
+            crate::transaction::TransactionPlanError::ProducerViolation(cause) => {
+                Self::ProducerViolation(cause)
+            }
+            _ => Self::Registry,
+        }
+    }
 }
 
 impl From<QueueCommitError> for CommitError {

@@ -33,7 +33,34 @@ struct State {
 
 struct TabsApp;
 
+impl TabsApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 13 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 13;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for TabsApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -183,7 +210,8 @@ const fn key(physical: PhysicalKey, logical: LogicalKey, phase: KeyboardPhase) -
 
 #[test]
 fn manual_tabs_enter_selected_wrap_home_end_and_activate_without_selection_on_focus() {
-    let mut harness = TestHarness::<TabsApp>::mount(fixture(2));
+    let mut harness = TestHarness::<TabsApp>::mount(fixture(2))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -244,7 +272,8 @@ fn manual_tabs_enter_selected_wrap_home_end_and_activate_without_selection_on_fo
 
 #[test]
 fn zero_selected_falls_back_without_repair_and_reentry_prefers_application_selection() {
-    let mut harness = TestHarness::<TabsApp>::mount(fixture(0));
+    let mut harness = TestHarness::<TabsApp>::mount(fixture(0))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -269,7 +298,8 @@ fn zero_selected_falls_back_without_repair_and_reentry_prefers_application_selec
 fn automatic_tabs_activate_only_after_successful_focus_movement() {
     let mut state = fixture(1);
     state.activation = ActivationMode::Automatic;
-    let mut harness = TestHarness::<TabsApp>::mount(state);
+    let mut harness = TestHarness::<TabsApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -290,7 +320,8 @@ fn disabled_selected_falls_back_vertical_navigation_skips_disabled_and_wrong_axi
     let mut state = fixture(2);
     state.orientation = Axis::Vertical;
     state.second_disabled = true;
-    let mut harness = TestHarness::<TabsApp>::mount(state);
+    let mut harness = TestHarness::<TabsApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -316,7 +347,8 @@ fn disabled_selected_falls_back_vertical_navigation_skips_disabled_and_wrong_axi
 fn conditional_panel_rebuild_keeps_relationships_exact_without_dangling_targets() {
     let mut state = fixture(1);
     state.conditional_panels = true;
-    let mut harness = TestHarness::<TabsApp>::mount(state);
+    let mut harness = TestHarness::<TabsApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = harness
         .publish()
         .unwrap_or_else(|error| unreachable!("conditional Tabs publish: {error:?}"));

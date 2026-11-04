@@ -3,12 +3,12 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{DemoApp, DemoState};
+    use crate::{DemoState, mount_demo_runtime_for_test};
     use runenui_core::{
         CommandOrigin, CompositionGeneration, KeyboardCompositionState, LogicalKey,
         SemanticCommand, WidgetTextInput,
     };
-    use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
+    use runenui_runtime::{MountedNodeId, PumpBudget};
     use runenui_winit::text_input::{
         TextInputState, keyboard_committed_text_candidate, translate_preedit_range,
     };
@@ -19,7 +19,7 @@ mod tests {
     }
 
     fn focused_composition() -> (MountedNodeId, CompositionGeneration) {
-        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
+        let mut runtime = mount_demo_runtime_for_test(DemoState::default());
         let _ = runtime
             .pump(full_pump())
             .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -47,7 +47,7 @@ mod tests {
     }
 
     fn distinct_owner() -> MountedNodeId {
-        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
+        let mut runtime = mount_demo_runtime_for_test(DemoState::default());
         let _ = runtime
             .pump(full_pump())
             .unwrap_or_else(|_| unreachable!("pump observation"))

@@ -44,6 +44,20 @@ enum Action {
 struct MotionImageApp;
 
 impl UiApp for MotionImageApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 1 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -74,6 +88,19 @@ struct ImageProbe {
 }
 
 impl Widget<Action> for ImageProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -429,7 +456,8 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
     let mut runtime = AppRuntime::<MotionImageApp>::mount(State {
         resource,
         dimmed: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let initial = render_initial_and_start_transition(&mut renderer, &mut runtime, &provider)?;
 
     let middle_publication = advance_and_publish(&mut runtime, Duration::from_millis(50));

@@ -33,6 +33,20 @@ impl ResourceProvider for NoResources {
 struct SliderApp;
 
 impl UiApp for SliderApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 1 mounted owners; event allowance <= 4 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(28, 26).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(28, 26).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(28, 26).with_reconciliation(1, 1, 1)
+    }
+
     type State = SemanticNumber;
     type Action = SemanticNumber;
     type HostProtocol = NoHostProtocol;
@@ -82,7 +96,8 @@ fn standard_slider_uses_generic_wgpu_shape_pipeline_and_rebuilds_pixels()
     };
     let mut runtime = AppRuntime::<SliderApp>::mount(
         SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!("zero finite")),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let provider = NoResources;
     let initial = publish(&mut runtime);
     let items = initial.paint_scene().items();

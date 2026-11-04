@@ -19,6 +19,27 @@ use runenui_runtime::{
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 1, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -64,7 +85,8 @@ fn run_ready(job: SendTaskJob) -> Result<(), SendTaskCompletionError> {
 fn pump_acknowledgment_and_rearm_do_not_strand_work() {
     let jobs = Arc::new(Mutex::new(Vec::new()));
     let wake_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.set_send_task_executor(HoldingExecutor(Arc::clone(&jobs)));
     let count = Arc::clone(&wake_count);
     runtime.set_wake_transport(move || {
@@ -107,7 +129,8 @@ fn pump_acknowledgment_and_rearm_do_not_strand_work() {
 fn terminal_transition_closes_retained_producers_without_external_wake() {
     let jobs = Arc::new(Mutex::new(Vec::new()));
     let wake_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.set_send_task_executor(HoldingExecutor(Arc::clone(&jobs)));
     let count = Arc::clone(&wake_count);
     runtime.set_wake_transport(move || {
@@ -137,6 +160,26 @@ fn terminal_transition_closes_retained_producers_without_external_wake() {
 struct RedrawApp;
 
 impl UiApp for RedrawApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -155,7 +198,8 @@ impl UiApp for RedrawApp {
 
 #[test]
 fn redraw_acknowledgment_retains_a_newer_dirty_revision() {
-    let mut runtime = AppRuntime::<RedrawApp>::mount(0);
+    let mut runtime = AppRuntime::<RedrawApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let initial = runtime
         .take_redraw_request()
         .unwrap_or_else(|| unreachable!());

@@ -14,6 +14,22 @@ struct TraceState {
 struct TraceApp;
 
 impl UiApp for TraceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One button, its routed/focus allowances and an output-only unary follow-up.
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
     type State = TraceState;
     type Action = OpaqueAction;
     type HostProtocol = NoHostProtocol;
@@ -57,7 +73,8 @@ fn settle(runtime: &mut AppRuntime<TraceApp>) {
 
 #[test]
 fn public_trace_reconstructs_non_debug_direct_and_effect_actions() {
-    let mut runtime = AppRuntime::<TraceApp>::mount(TraceState { updates: 0 });
+    let mut runtime = AppRuntime::<TraceApp>::mount(TraceState { updates: 0 })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
 
     let direct_work = runtime

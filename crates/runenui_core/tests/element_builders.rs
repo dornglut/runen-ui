@@ -20,6 +20,14 @@ enum Action {
 struct Probe;
 
 impl Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        _phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        runenui_core::WidgetProducerBudget::new(0)
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}

@@ -23,7 +23,42 @@ struct State {
     log: Vec<ComboBoxRequest>,
 }
 struct App;
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        // Cursor work is independent of app callback outputs; Down/Up can
+        // retain two records on one root until host settlement.
+        runenui_core::ProducerBudget::new(outputs + nodes + 6, outputs + 1)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let nodes = if state.open { 7 } else { 2 };
+        runenui_core::ProducerBudget::new(nodes, 0)
+            .with_reconciliation(nodes, 0, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Earlier FIFO requests may open the popup before this action runs.
+        Self::producer_budget(7)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // An Activate on the closed owner can enqueue Request(Open), so this
+        // root may need to reconcile the seven-node popup before it retires.
+        Self::producer_budget(7)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -104,7 +139,8 @@ fn assert_proxy_options_are_not_focusable(app: &mut AppRuntime<App>) {
 }
 #[test]
 fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_owned() {
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -207,7 +243,8 @@ fn controls_identifies_actual_listbox_and_active_option_without_focus_repair() {
         open: true,
         chosen: 1,
         log: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     assert!(app.focus().focused_node().is_none());
     let published = app
@@ -294,7 +331,8 @@ fn active_label(app: &mut AppRuntime<App>) -> Option<String> {
 #[test]
 fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
     use runenui_core::{KeyboardCompositionState as Composition, LogicalKey, PhysicalKey};
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -375,7 +413,8 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
 
 #[test]
 fn semantic_expand_and_collapse_actions_follow_application_open_state() {
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -433,7 +472,8 @@ fn collapsed_display_glyphs(chosen: u8) -> Vec<u32> {
     let mut app = AppRuntime::<App>::mount(State {
         chosen,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     app.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("checked font fixture"));
     app.set_text_generic_family_mapping(
@@ -519,7 +559,8 @@ fn displayed_option_center(
 
 #[test]
 fn physical_option_click_uses_standard_option_activation_without_moving_owner_focus() {
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     app.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("known test font"));
     app.set_text_generic_family_mapping(
@@ -604,7 +645,8 @@ fn closed_combo_exposes_app_selected_option_as_neutral_semantic_text_value() {
         let mut app = AppRuntime::<App>::mount(State {
             chosen: selected,
             ..State::default()
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         settle(&mut app);
         let publication = app
             .publish_surface(&SurfaceBuildContext::tight(
@@ -697,7 +739,10 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
                     log: Vec::new(),
                 },
                 RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-            );
+            )
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
             settle(&mut app);
             let owner = id(&mut app, "choice.owner");
             command(&mut app, owner.clone(), SemanticCommand::RequestFocus);

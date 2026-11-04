@@ -15,7 +15,7 @@ use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MonotonicInstant, MountedNodeId, TraceApplicationCommandOutcome, TraceContext,
     TraceEventContext, TraceEventFamily, TraceRecordKind, TraceRouteSnapshot,
-    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
+    TraceSemanticActionRejection, TraceSequence,
     focus::focus_group_activation_policy,
     queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -25,6 +25,17 @@ pub(crate) use transaction::{
     PointerSelectionTransition, PointerSelectionUpdate, RoutedFailureLineage, RoutedIngressFacts,
     RoutedTransaction,
 };
+
+struct SemanticCommandAdmissionInput {
+    sequence: crate::WorkSequence,
+    target: MountedNodeId,
+    command: runenui_core::SemanticCommand,
+    origin: runenui_core::CommandOrigin,
+    instant: MonotonicInstant,
+    causal_parent: Option<TraceSequence>,
+    trace_reservation: crate::trace::TraceReservation,
+    root_quota: crate::queue::RootQuotaId,
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_application_command(&mut self, envelope: ApplicationCommandEnvelope) {
@@ -36,6 +47,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             causal_parent,
             trace_reservation,
+            root_quota,
         } = envelope;
         let facts = RoutedIngressFacts::new(
             sequence,
@@ -45,7 +57,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceEventContext::new(TraceEventFamily::ApplicationCommand, false),
             causal_parent,
             trace_reservation,
-        );
+        )
+        .with_root_quota(root_quota);
         let Some(mut transaction) =
             self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::one_fact())
         else {
@@ -82,12 +95,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.origin,
         );
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                None,
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            self.poison_routed_event(&failure_facts, error.integrity_failure(), None);
         }
     }
 
@@ -103,6 +112,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             causal_parent,
             trace_reservation,
+            root_quota,
         } = envelope;
         if !self.semantic_command_origin_is_current(
             sequence,
@@ -127,6 +137,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             causal_parent,
             trace_reservation,
+            root_quota,
         );
     }
 
@@ -184,6 +195,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
+        root_quota: crate::queue::RootQuotaId,
     ) {
         let entry_proof = focus_request_override.as_ref().and_then(|override_focus| {
             override_focus
@@ -192,39 +204,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .zip(override_focus.target.clone())
         });
         let focus_before = self.focus.session();
-        let mut facts = RoutedIngressFacts::new(
-            sequence,
-            target,
-            origin,
-            instant,
-            TraceEventContext::new(TraceEventFamily::SemanticCommand, true),
-            causal_parent,
-            trace_reservation,
-        );
+        let (mut facts, default_outputs, additional_trace) =
+            self.semantic_command_admission_facts(SemanticCommandAdmissionInput {
+                sequence,
+                target,
+                command,
+                origin,
+                instant,
+                causal_parent,
+                trace_reservation,
+                root_quota,
+            });
         if let Some(semantic_target) = semantic_target {
             facts = facts.with_semantic_target(semantic_target);
         }
         if let Some(focus_request_override) = focus_request_override {
             facts = facts.with_focus_request_override(focus_request_override);
         }
-        let default_outputs = usize::from(matches!(
-            command,
-            runenui_core::SemanticCommand::DeleteBackward
-                | runenui_core::SemanticCommand::DeleteForward
-                | runenui_core::SemanticCommand::Undo
-                | runenui_core::SemanticCommand::Redo
-                | runenui_core::SemanticCommand::ReplaceSelection
-                | runenui_core::SemanticCommand::Copy
-                | runenui_core::SemanticCommand::Cut
-                | runenui_core::SemanticCommand::Paste
-        ));
-        let additional_trace = if matches!(command, runenui_core::SemanticCommand::ScrollControl(_))
-        {
-            MandatoryTracePlan::one_fact()
-        } else {
-            MandatoryTracePlan::none()
-        };
-        let Some(mut transaction) = (if is_focus_command(command) {
+        let Some(transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts, command)
         } else if default_outputs != 0 {
             self.try_begin_routed_transaction_with_trace_and_default_outputs(
@@ -238,7 +235,132 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }) else {
             return;
         };
+        self.dispatch_semantic_transaction(
+            transaction,
+            command,
+            sequence,
+            presentation_cancel_origin,
+            entry_proof,
+            focus_before,
+        );
+    }
+
+    fn semantic_command_admission_facts(
+        &self,
+        input: SemanticCommandAdmissionInput,
+    ) -> (RoutedIngressFacts, usize, MandatoryTracePlan) {
+        let SemanticCommandAdmissionInput {
+            sequence,
+            target,
+            command,
+            origin,
+            instant,
+            causal_parent,
+            trace_reservation,
+            root_quota,
+        } = input;
+        let mut facts = RoutedIngressFacts::new(
+            sequence,
+            target,
+            origin,
+            instant,
+            TraceEventContext::new(TraceEventFamily::SemanticCommand, true),
+            causal_parent,
+            trace_reservation,
+        )
+        .with_root_quota(root_quota);
+        let clipboard_default = matches!(
+            command,
+            runenui_core::SemanticCommand::Copy
+                | runenui_core::SemanticCommand::Cut
+                | runenui_core::SemanticCommand::Paste
+        );
+        let input_method_default = self.input_method_service_may_be_staged();
+        let focus_navigation = matches!(
+            command,
+            runenui_core::SemanticCommand::FocusNext
+                | runenui_core::SemanticCommand::FocusPrevious
+                | runenui_core::SemanticCommand::FocusLeft
+                | runenui_core::SemanticCommand::FocusRight
+                | runenui_core::SemanticCommand::FocusUp
+                | runenui_core::SemanticCommand::FocusDown
+                | runenui_core::SemanticCommand::RestoreFocus
+                | runenui_core::SemanticCommand::FocusGroupNext
+                | runenui_core::SemanticCommand::FocusGroupPrevious
+                | runenui_core::SemanticCommand::FocusGroupFirst
+                | runenui_core::SemanticCommand::FocusGroupLast
+        );
+        if focus_navigation
+            && self.tree.event_route(&facts.target).is_ok_and(|route| {
+                route.iter().any(|owner| {
+                    self.surface_publication
+                        .current_scroll_metrics(owner)
+                        .is_some()
+                })
+            })
+        {
+            facts = facts.with_default_output_budget(1);
+        }
+        let mut default_starts = [0usize; 5];
+        default_starts[4] = usize::from(clipboard_default) + usize::from(input_method_default);
+        facts = facts.with_default_queue_start_outputs(default_starts[4]);
+        if command == runenui_core::SemanticCommand::Activate
+            && let Ok(budget) = self.tree.activation_budget(&facts.target)
+        {
+            facts = facts.with_default_output_budget(budget.outputs());
+            for (index, family) in [
+                runenui_core::WorkFamily::LocalTask,
+                runenui_core::WorkFamily::SendTask,
+                runenui_core::WorkFamily::Timer,
+                runenui_core::WorkFamily::HostRequest,
+                runenui_core::WorkFamily::FrameworkService,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                default_starts[index] =
+                    default_starts[index].saturating_add(budget.work_starts().for_family(family));
+            }
+        }
+        facts = facts.with_default_work_starts(runenui_core::WorkStartBudget::new(
+            default_starts[0],
+            default_starts[1],
+            default_starts[2],
+            default_starts[3],
+            default_starts[4],
+        ));
+        let default_outputs = usize::from(matches!(
+            command,
+            runenui_core::SemanticCommand::DeleteBackward
+                | runenui_core::SemanticCommand::DeleteForward
+                | runenui_core::SemanticCommand::Undo
+                | runenui_core::SemanticCommand::Redo
+                | runenui_core::SemanticCommand::ReplaceSelection
+                | runenui_core::SemanticCommand::Copy
+                | runenui_core::SemanticCommand::Cut
+                | runenui_core::SemanticCommand::Paste
+                | runenui_core::SemanticCommand::CancelOrBack
+        )) + usize::from(input_method_default);
+        let additional_trace = if matches!(command, runenui_core::SemanticCommand::ScrollControl(_))
+        {
+            MandatoryTracePlan::one_fact()
+        } else {
+            MandatoryTracePlan::none()
+        };
+        (facts, default_outputs, additional_trace)
+    }
+
+    fn dispatch_semantic_transaction(
+        &mut self,
+        mut transaction: RoutedTransaction<Action>,
+        command: runenui_core::SemanticCommand,
+        sequence: crate::WorkSequence,
+        presentation_cancel_origin: Option<super::presentation::PresentationCancelOrigin>,
+        entry_proof: Option<(crate::queue::PresentationFocusEntry, MountedNodeId)>,
+        focus_before: Option<crate::focus::FocusSession>,
+    ) {
         transaction.presentation_cancel_origin = presentation_cancel_origin;
+        let origin = transaction.origin;
         let event = UiEvent::SemanticCommand(transaction.semantic_target.as_ref().map_or_else(
             || SemanticCommandEvent::__runtime_new(command, origin),
             |semantic_target| {
@@ -262,12 +384,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                None,
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            self.poison_routed_event(&failure_facts, error.integrity_failure(), None);
         } else if let Some((entry, recipient)) = entry_proof
             && self.focus.focused_node() == Some(&recipient)
             && self.focus.session().is_some()
@@ -320,6 +438,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
         let (route, admission) =
             self.prepare_focus_routed_route(&facts, additional_trace, mandatory_default_outputs)?;
+        let pointer_callback_targets = route.clone();
+        Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+
+    pub(in crate::runtime) fn try_begin_reconciled_focus_transaction(
+        &mut self,
+        facts: RoutedIngressFacts,
+        composition_active: bool,
+    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
+        let (route, admission) = self.prepare_reconciled_focus_route(&facts, composition_active)?;
         let pointer_callback_targets = route.clone();
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
@@ -399,6 +527,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         RoutedTransaction {
             sequence: facts.sequence,
+            root_quota: facts.root_quota,
             target: facts.target,
             origin: facts.origin,
             semantic_target: facts.semantic_target,
@@ -410,7 +539,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target_trace,
             parent,
             remaining_outputs: admission.max_outputs,
-            remaining_default_outputs: admission.mandatory_default_outputs,
+            callback_output_budgets: admission.callback_output_budgets,
+            remaining_default_outputs: admission.default_output_operations,
             propagation_stopped: false,
             host_input_claimed: false,
             keyboard_default_claim: None,
@@ -455,7 +585,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     | runenui_core::SemanticCommand::FocusGroupLast
             ) && focus_group_activation_policy(&self.tree, &self.focus, &facts.target)
                 == Some(runenui_core::FocusGroupActivationPolicy::ActivateTarget),
-        );
+        ) + usize::from(self.input_method_service_may_be_staged());
         let (route, admission) = self
             .prepare_focus_routed_route(
                 &facts,

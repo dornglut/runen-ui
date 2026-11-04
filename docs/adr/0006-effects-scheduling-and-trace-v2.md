@@ -278,7 +278,84 @@ Sequence and generation counters never wrap. Their practical representation may
 be wider than current counters, but exhaustion always follows the explicit
 terminal policy rather than reusing identity.
 
-### Runtime limits and saturation
+### Qualified producer admission and owned failure
+
+Applications declare finite `ProducerBudget` profiles for initial construction,
+each exact action, and routed interaction. Widget profiles separately describe
+Event, Mount, Update, Activation, Subscriptions and Publication phases. These
+host-neutral values describe authored demand; runtime alone owns reservations,
+queue sequences, work records and identity allocation. Exact signatures live in
+core Rustdoc. This is a clean pre-1.0 cutover, without legacy void-output aliases.
+
+An action profile must cover every state and topology in which that action can
+reach the head after accepted predecessors. Current callback state is not a
+certificate for a successor of an opaque queued update. Descendant profiles must
+be covered by their causal root. A finite root owns a live-frontier quota in the
+single canonical FIFO, not another queue or a bound on total execution history.
+Queued descendants, future completion outcomes, keyed replacement/cancellation,
+mandatory cleanup and live family residency consume that root's authority until
+their actual retirement. Releasing an envelope does not prematurely release
+credits still needed by its work or input lifetime.
+
+Before accepting original owned work, runtime checks the declared capacity and
+captures its reservation. Ordinary capacity refusal returns the same unconsumed
+payload without a callback, mutation, accepted work sequence, hidden pending
+buffer or later implicit retry. The producer controls explicit retry or disposal.
+An admitted, correctly declared focus-retiring application turn must not become
+terminal because followers occupy ordinary FIFO capacity: the whole causal
+frontier, mandatory cleanup and independent routed output allowances must already
+be funded. Applicable identity, generation, bridge and mandatory trace admission
+remain checked before their mutation boundaries. Exhaustion never wraps or
+reuses identity; existing hard-exhaustion integrity policy is not ordinary Full.
+
+New mounts plus retained update callbacks form a conservative live-identity peak;
+admission cannot speculate that opaque reconciliation will retire a usable slot.
+Known last-generation slots are charged as permanently retiring. Whole-turn
+trace demand composes the existing route, focus, composition, pointer, lifecycle
+and scheduler plans before application mutation. Optional diagnostics cannot
+spend that protected demand. Future outcome reservations transfer their credit
+and survive the turn; unused step demand is released when the turn finishes.
+Hard counters are rechecked at the FIFO head after predecessors, rather than
+promising unbounded trace or identity history from one finite frontier quota.
+
+This guarantee is conditional on an enforceable finite producer contract. It is
+not universal admission of opaque callbacks. At default C=4096 and R=1024,
+unrestricted independent outputs requiring 1+4R positions cannot be promised.
+Neither raising C nor reducing formerly independent C/T/B allowances is a valid
+substitute for a qualified producer and complete resource proof. Finite frontier
+ownership also does not guarantee quiescence of an endlessly productive callback.
+
+`try_*` emission checks output and family allowances atomically before erasing
+or mapping an owned input. `EmitError<T>` returns the original non-Clone payload
+and typed cause. Payload-free operations return the cause directly. The first
+`ProducerContractViolation` is sticky even when the caller ignores an individual
+Result. Phase, component, original declared bound and checked attempted count
+survive nested mapping. Activation's returned primary action and secondary
+outputs share one allowance and are charged once. Subscription declaration
+mapping preserves the same authority; application start accounting follows the
+complete desired-set diff, so retained declarations do not spend new-start credit.
+Application effects, subscription starts and causal lifecycle cleanup share the
+whole application turn's per-family start allowance. A rejected batch spends no
+partial family credit; provisional starts are charged together before commit.
+
+Two-argument `UiApp::update` remains synchronous. Its entire returned Effects
+batch is validated for cardinality, families, residency, keyed overlap,
+cancellation and descendants before root/reconciliation/live work mutation.
+Previously changed application state is not rolled back. Known authored excess
+terminates with a typed, trace-independent producer cause; unrelated accounting
+or bridge failure retains its own integrity cause. A rejected provisional group
+starts nothing and disposes owned output once. Mandatory cleanup still runs;
+previous committed M13 settlements remain committed and scope retirement is not
+a fabricated per-input outcome.
+
+Initial admission returns an owned state/configuration error. Knowable profile,
+capacity and identity refusals precede producer entry. Successful root mounting
+and reconciliation precede `initial_effects` collection, as required by APP-02;
+mounted subscription callbacks remain at their canonical declaration envelopes.
+Actual initial groups are jointly validated before starts. A constructor failure
+after mounting still runs each mandatory unmount hook exactly once.
+
+### Configured limits
 
 M4 introduces a runtime limit configuration covering at least:
 

@@ -44,6 +44,23 @@ struct Probe {
 }
 
 impl Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(2),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -67,8 +84,12 @@ impl Widget<Action> for Probe {
                 .and_then(|target| target.data().cloned()),
         });
         match command.command() {
-            SemanticCommand::SetValue(value) => context.emit(Action::SetValue(value)),
-            SemanticCommand::Expand => context.emit(Action::Expand),
+            SemanticCommand::SetValue(value) => {
+                let _ = context.try_emit(Action::SetValue(value));
+            }
+            SemanticCommand::Expand => {
+                let _ = context.try_emit(Action::Expand);
+            }
             _ => {}
         }
         WidgetEventOutput::none()
@@ -121,7 +142,35 @@ impl Widget<Action> for Probe {
 
 struct App;
 
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(1)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -157,6 +206,7 @@ fn app_runtime(read_only: bool) -> AppRuntime<App> {
         read_only,
         observations: Rc::new(RefCell::new(Vec::new())),
     })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 fn publish(

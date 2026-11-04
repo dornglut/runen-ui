@@ -30,6 +30,28 @@ fn size(width: f32, height: f32) -> LogicalSize {
 struct ResponsiveApp;
 
 impl UiApp for ResponsiveApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_application_outputs(0)
+    }
+
     type State = Rc<RefCell<Vec<runenui_core::WidgetMeasureInput>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -45,7 +67,8 @@ impl UiApp for ResponsiveApp {
 #[allow(clippy::assert_is_empty)]
 fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs));
+    let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let wide = publish(
         &mut runtime,
@@ -103,6 +126,28 @@ fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
 struct BaselineApp;
 
 impl UiApp for BaselineApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_application_outputs(0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -116,7 +161,8 @@ impl UiApp for BaselineApp {
 
 #[test]
 fn downstream_custom_baselines_reach_public_flex_alignment() {
-    let mut runtime = AppRuntime::<BaselineApp>::mount(());
+    let mut runtime = AppRuntime::<BaselineApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publish(
         &mut runtime,
         &SurfaceBuildContext::new(
@@ -207,6 +253,28 @@ struct CountingState {
 struct CountingApp;
 
 impl UiApp for CountingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_application_outputs(0)
+    }
+
     type State = CountingState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -235,7 +303,8 @@ fn measurement_callbacks_are_transaction_local_and_clean_publication_reuses_prod
         layout: Rc::clone(&layout),
         text: Rc::clone(&text),
         fixed: Rc::clone(&fixed),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let context =
@@ -306,6 +375,28 @@ fn measurement_callbacks_are_transaction_local_and_clean_publication_reuses_prod
 struct UnsupportedApp;
 
 impl UiApp for UnsupportedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_application_outputs(0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -319,7 +410,8 @@ impl UiApp for UnsupportedApp {
 
 #[test]
 fn unsupported_measurement_is_explicit_and_deterministic() {
-    let mut runtime = AppRuntime::<UnsupportedApp>::mount(());
+    let mut runtime = AppRuntime::<UnsupportedApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let context =
         SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(100.0, 100.0)));
@@ -337,6 +429,102 @@ fn unsupported_measurement_is_explicit_and_deterministic() {
     assert_eq!(publication.frame().size(), size(100.0, 0.0));
 }
 
+fn assert_child_layout_case(case: LayoutCase) {
+    let mut runtime = AppRuntime::<LayoutConformanceApp>::mount(LayoutState {
+        case,
+        activations: 0,
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
+    register_controlled_text(&mut runtime);
+    settle_initial_mounted_declarations(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let context =
+        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
+    let publication = publish(&mut runtime, &context);
+    let indexed: Vec<_> = runtime
+        .index()
+        .nodes()
+        .iter()
+        .map(|node| (node.id().clone(), node.parent().cloned()))
+        .collect();
+    let framed: Vec<_> = publication
+        .frame()
+        .nodes()
+        .iter()
+        .map(|node| (node.id().clone(), node.parent().cloned()))
+        .collect();
+    let styled: Vec<_> = publication
+        .style_report()
+        .nodes()
+        .iter()
+        .map(|node| (node.id().clone(), node.parent().cloned()))
+        .collect();
+    let laid_out: Vec<_> = publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .map(|node| (node.id().clone(), node.parent().cloned()))
+        .collect();
+    assert_eq!(framed, indexed, "frame alignment for {case:?}");
+    assert_eq!(styled, indexed, "style alignment for {case:?}");
+    assert_eq!(laid_out, indexed, "layout alignment for {case:?}");
+
+    let root = publication
+        .layout_report()
+        .root()
+        .unwrap_or_else(|| unreachable!());
+    match case {
+        LayoutCase::FixedMinimum => {
+            assert!(root.desired_content_size().width() >= 180.0);
+            assert!(root.desired_content_size().height() >= 60.0);
+        }
+        LayoutCase::TextMinimum => {
+            assert!(root.desired_content_size().width() >= 200.0);
+            assert!(root.desired_content_size().height() >= 20.0);
+        }
+        LayoutCase::UnsupportedMinimum => {
+            assert!(root.desired_content_size().width() > 0.0);
+            assert_eq!(
+                root.diagnostics()[0].code(),
+                "runenui.measurement.unsupported"
+            );
+        }
+        _ => {}
+    }
+
+    let authored = ElementId::new("layout.action").unwrap_or_else(|_| unreachable!());
+    let action = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!())
+        .id()
+        .clone();
+    let bounds = publication
+        .frame()
+        .node(&action)
+        .unwrap_or_else(|| unreachable!())
+        .bounds();
+    let point = LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    )
+    .unwrap_or_else(|_| unreachable!());
+    assert_eq!(publication.hit_test_scene().target_at(point), Some(&action));
+    submit_layout_activate(&mut runtime, action);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .processed_envelopes(),
+        2
+    );
+    assert_eq!(runtime.state().activations, 1);
+}
+
 #[test]
 fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
     for case in [
@@ -348,98 +536,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         LayoutCase::UnsupportedMinimum,
         LayoutCase::NestedExternal,
     ] {
-        let mut runtime = AppRuntime::<LayoutConformanceApp>::mount(LayoutState {
-            case,
-            activations: 0,
-        });
-        register_controlled_text(&mut runtime);
-        settle_initial_mounted_declarations(&mut runtime);
-        let environment = StyleEnvironment::default();
-        let context =
-            SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
-        let publication = publish(&mut runtime, &context);
-        let indexed: Vec<_> = runtime
-            .index()
-            .nodes()
-            .iter()
-            .map(|node| (node.id().clone(), node.parent().cloned()))
-            .collect();
-        let framed: Vec<_> = publication
-            .frame()
-            .nodes()
-            .iter()
-            .map(|node| (node.id().clone(), node.parent().cloned()))
-            .collect();
-        let styled: Vec<_> = publication
-            .style_report()
-            .nodes()
-            .iter()
-            .map(|node| (node.id().clone(), node.parent().cloned()))
-            .collect();
-        let laid_out: Vec<_> = publication
-            .layout_report()
-            .nodes()
-            .iter()
-            .map(|node| (node.id().clone(), node.parent().cloned()))
-            .collect();
-        assert_eq!(framed, indexed, "frame alignment for {case:?}");
-        assert_eq!(styled, indexed, "style alignment for {case:?}");
-        assert_eq!(laid_out, indexed, "layout alignment for {case:?}");
-
-        let root = publication
-            .layout_report()
-            .root()
-            .unwrap_or_else(|| unreachable!());
-        match case {
-            LayoutCase::FixedMinimum => {
-                assert!(root.desired_content_size().width() >= 180.0);
-                assert!(root.desired_content_size().height() >= 60.0);
-            }
-            LayoutCase::TextMinimum => {
-                assert!(root.desired_content_size().width() >= 200.0);
-                assert!(root.desired_content_size().height() >= 20.0);
-            }
-            LayoutCase::UnsupportedMinimum => {
-                assert!(root.desired_content_size().width() > 0.0);
-                assert_eq!(
-                    root.diagnostics()[0].code(),
-                    "runenui.measurement.unsupported"
-                );
-            }
-            _ => {}
-        }
-
-        let authored = ElementId::new("layout.action").unwrap_or_else(|_| unreachable!());
-        let action = runtime
-            .index()
-            .nodes()
-            .iter()
-            .find(|node| node.authored_id() == Some(&authored))
-            .unwrap_or_else(|| unreachable!())
-            .id()
-            .clone();
-        let bounds = publication
-            .frame()
-            .node(&action)
-            .unwrap_or_else(|| unreachable!())
-            .bounds();
-        let point = LogicalPoint::new(
-            bounds.x() + bounds.width() / 2.0,
-            bounds.y() + bounds.height() / 2.0,
-        )
-        .unwrap_or_else(|_| unreachable!());
-        assert_eq!(publication.hit_test_scene().target_at(point), Some(&action));
-        submit_layout_activate(&mut runtime, action);
-        assert_eq!(
-            runtime
-                .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-                .unwrap_or_else(|_| unreachable!("pump observation"))
-                .report()
-                .to_owned()
-                .processed_envelopes(),
-            2
-        );
-        assert_eq!(runtime.state().activations, 1);
+        assert_child_layout_case(case);
     }
 }
 
@@ -452,7 +549,8 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         let mut runtime = AppRuntime::<LayoutConformanceApp>::mount(LayoutState {
             case,
             activations: 0,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         register_controlled_text(&mut runtime);
         let environment = StyleEnvironment::default();
         let context =
@@ -470,7 +568,8 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
     let mut runtime = AppRuntime::<LayoutConformanceApp>::mount(LayoutState {
         case: LayoutCase::NestedExternal,
         activations: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let context =

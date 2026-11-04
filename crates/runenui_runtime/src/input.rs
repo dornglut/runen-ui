@@ -26,6 +26,8 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitKeyboardErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     NoFocusedTarget,
@@ -106,6 +108,8 @@ impl KeyboardShortcutCandidate {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitTextErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     NoFocusedTarget,
@@ -216,6 +220,8 @@ impl CompositionSubmission {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitCompositionErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     NoFocusedTarget,
@@ -539,6 +545,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             CommandOrigin::automation(),
             resolution_parent,
+            None,
         )
         .map(|submission| AutomationSubmission::new(submission.sequence()))
         .map_err(|error| {
@@ -554,7 +561,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         event: KeyboardEvent,
     ) -> Result<KeyboardSubmission, SubmitKeyboardError> {
-        let current = self.input_target();
+        let current = self.input_target(&event);
         let (count, _) = self.queue.pending_presentation_entry();
         let (target, witness) = if count > 0 {
             let target = match current {
@@ -623,6 +630,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             SubmitTextError::new(
                 match kind {
                     SubmitKeyboardErrorKind::Full => SubmitTextErrorKind::Full,
+                    SubmitKeyboardErrorKind::WorkCapacity(family) => {
+                        SubmitTextErrorKind::WorkCapacity(family)
+                    }
+                    SubmitKeyboardErrorKind::InvalidProducerProfile => {
+                        SubmitTextErrorKind::InvalidProducerProfile
+                    }
                     SubmitKeyboardErrorKind::Closed => SubmitTextErrorKind::Closed,
                     SubmitKeyboardErrorKind::Terminal(reason) => {
                         SubmitTextErrorKind::Terminal(reason)
@@ -642,10 +655,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })
     }
 
+    fn reserve_composition_producer(
+        &mut self,
+    ) -> Result<crate::queue::QueueReservation, SubmitCompositionErrorKind> {
+        let profile = self
+            .interaction_producer_budget
+            .map(|budget| budget(self.state()))
+            .filter(|profile| self.application_output_budget_fits(*profile))
+            .ok_or(SubmitCompositionErrorKind::InvalidProducerProfile)?;
+        self.reserve_producer(profile).map_err(|error| match error {
+            crate::queue::QueueReservationError::Capacity => SubmitCompositionErrorKind::Full,
+            crate::queue::QueueReservationError::WorkCapacity(family) => {
+                SubmitCompositionErrorKind::WorkCapacity(family)
+            }
+            crate::queue::QueueReservationError::Closed => SubmitCompositionErrorKind::Closed,
+            crate::queue::QueueReservationError::SequenceExhausted => {
+                SubmitCompositionErrorKind::WorkSequenceExhausted
+            }
+            crate::queue::QueueReservationError::Foreign
+            | crate::queue::QueueReservationError::Stale
+            | crate::queue::QueueReservationError::Exhausted => {
+                SubmitCompositionErrorKind::InvalidProducerProfile
+            }
+        })
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one ordered pre-admission and exact generation commit boundary"
+    )]
     pub(crate) fn start_composition(
         &mut self,
         device_id: Option<InputDeviceId>,
     ) -> Result<CompositionStartSubmission, SubmitCompositionStartError> {
+        self.retire_input_continuation_claims();
         let request = CompositionStartRequest::new(device_id);
         let target = self.composition_start_target(request)?;
         let Some(next) = self.next_composition_generation else {
@@ -663,7 +706,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 request,
             ));
         }
+        let producer = self
+            .reserve_composition_producer()
+            .map_err(|kind| Self::composition_start_error(kind, request))?;
+        if self
+            .queue
+            .preflight_input_continuations(&producer, 1)
+            .is_err()
+        {
+            self.release_unused_reservation(&producer);
+            return Err(Self::composition_start_error(
+                SubmitCompositionErrorKind::InvalidProducerProfile,
+                request,
+            ));
+        }
         let Some(reservation) = self.trace.reserve_input_outcome() else {
+            self.release_unused_reservation(&producer);
             return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::TraceSequenceExhausted,
                 request,
@@ -671,6 +729,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let Some(sequence) = self.queue.next_sequence() else {
             self.trace.release_reservation(reservation);
+            self.release_unused_reservation(&producer);
             return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::WorkSequenceExhausted,
                 request,
@@ -681,6 +740,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // admission gates pass, but before trace or composition is committed.
         if !self.can_admit_direct_input_ownership_boundary() {
             self.trace.release_reservation(reservation);
+            self.release_unused_reservation(&producer);
             let reason = RuntimeTerminalReason::Poisoned;
             self.enter_terminal(reason, 0);
             return Err(Self::composition_start_error(
@@ -726,16 +786,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .and_then(core::num::NonZeroU64::new);
         let committed = self
             .queue
-            .push_input_preflighted(
+            .push_composition_preflighted(
+                &producer,
                 target,
-                InputEnvelopePayload::Composition(event),
-                None,
+                event,
                 instant,
                 pending_bound,
                 reservation,
             )
             .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
         self.last_issued_composition_generation = Some(next);
+        self.queue
+            .retain_input_continuation(
+                producer.quota(),
+                crate::queue::InputContinuationKey::Composition(generation.clone()),
+            )
+            .unwrap_or_else(|_| unreachable!("composition continuation was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CompositionStartSubmission::new(committed, generation))
     }
@@ -840,6 +906,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         SubmitCompositionStartError::new(kind, request)
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "owned refusal and trace/queue/lifetime commitment share one ingress boundary"
+    )]
     fn submit_existing_composition(
         &mut self,
         event: CompositionEvent,
@@ -849,7 +919,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(validated) => validated,
             Err(kind) => return Err(SubmitCompositionError::new(kind, event)),
         };
-        match self.queue.preflight_commit(1) {
+        let continuation = matches!(
+            &event,
+            CompositionEvent::End(_) | CompositionEvent::Cancel(_)
+        )
+        .then(|| crate::queue::InputContinuationKey::Composition(event.generation().clone()))
+        .filter(|key| self.queue.input_continuation(key).is_some());
+        match if let Some(key) = &continuation {
+            self.queue
+                .preflight_input_continuation(key)
+                .map_err(|error| match error {
+                    crate::queue::QueueReservationError::SequenceExhausted => {
+                        crate::queue::QueueCommitError::SequenceExhausted
+                    }
+                    _ => crate::queue::QueueCommitError::Full,
+                })
+        } else {
+            self.queue.preflight_commit(1)
+        } {
             Ok(()) => {}
             Err(crate::queue::QueueCommitError::Full) => {
                 return Err(SubmitCompositionError::new(
@@ -864,7 +951,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ));
             }
         }
+        let producer = match if let Some(key) = &continuation {
+            self.queue
+                .input_continuation(key)
+                .ok_or(SubmitCompositionErrorKind::InvalidProducerProfile)
+        } else {
+            self.reserve_composition_producer()
+        } {
+            Ok(producer) => producer,
+            Err(kind) => return Err(SubmitCompositionError::new(kind, event)),
+        };
         let Some(reservation) = self.trace.reserve_input_outcome() else {
+            if continuation.is_none() {
+                self.release_unused_reservation(&producer);
+            }
             return Err(SubmitCompositionError::new(
                 SubmitCompositionErrorKind::TraceSequenceExhausted,
                 event,
@@ -890,22 +990,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         if self.trace.is_enabled() && parent.is_none() {
             self.trace.release_reservation(reservation);
+            if continuation.is_none() {
+                self.release_unused_reservation(&producer);
+            }
             return Err(SubmitCompositionError::new(
                 SubmitCompositionErrorKind::TraceSequenceExhausted,
                 event,
             ));
         }
-        let sequence = self
-            .queue
-            .push_input_preflighted(
+        let sequence = if let Some(key) = &continuation {
+            self.queue.push_input_continuation(key, |sequence, _| {
+                crate::queue::WorkEnvelope::Input(InputEnvelope {
+                    sequence,
+                    target: owner,
+                    focus_binding: None,
+                    text_revoked: false,
+                    root_quota: None,
+                    payload: InputEnvelopePayload::Composition(event),
+                    instant,
+                    causal_parent: parent,
+                    trace_reservation: reservation,
+                })
+            })
+        } else {
+            self.queue.push_composition_preflighted(
+                &producer,
                 owner,
-                InputEnvelopePayload::Composition(event),
-                None,
+                event,
                 instant,
                 parent,
                 reservation,
             )
-            .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
+        }
+        .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CompositionSubmission::new(sequence))
     }
@@ -982,7 +1099,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn input_target(&self) -> Result<crate::MountedNodeId, SubmitKeyboardErrorKind> {
+    fn input_target(
+        &self,
+        event: &KeyboardEvent,
+    ) -> Result<crate::MountedNodeId, SubmitKeyboardErrorKind> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => return Err(SubmitKeyboardErrorKind::Closed),
@@ -990,7 +1110,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return Err(SubmitKeyboardErrorKind::Terminal(reason));
             }
         }
-        if self.queue.is_full() {
+        // Space cleanup can spend its own held ingress credit. Exact owner,
+        // device and queued-predecessor validation happens before commitment.
+        let may_continue_space = event.physical_key() == &PhysicalKey::Space
+            && matches!(event.phase(), KeyboardPhase::Up | KeyboardPhase::Cancel);
+        if self.queue.is_full() && !may_continue_space {
             return Err(SubmitKeyboardErrorKind::Full);
         }
         if !self.queue.has_sequence() {
@@ -1056,17 +1180,103 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(target)
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the common input admission pipeline keeps every owned-payload refusal before commitment"
+    )]
     fn commit_input(
         &mut self,
         target: crate::MountedNodeId,
         payload: InputEnvelopePayload,
         focus_binding: Option<crate::queue::FocusInputBinding>,
     ) -> Result<WorkSequence, (SubmitKeyboardErrorKind, InputEnvelopePayload)> {
+        let continuation = match &payload {
+            InputEnvelopePayload::Keyboard(event)
+                if event.physical_key() == &PhysicalKey::Space
+                    && matches!(event.phase(), KeyboardPhase::Up | KeyboardPhase::Cancel)
+                    && (!event.is_repeat()
+                        || event.phase() == KeyboardPhase::Cancel
+                        || event.composition_state() == KeyboardCompositionState::Active) =>
+            {
+                let current = self
+                    .space_ownership
+                    .as_ref()
+                    .filter(|owner| owner.target == target && owner.device_id == event.device_id())
+                    .map(|owner| crate::queue::InputContinuationKey::Space(owner.down_sequence));
+                self.queue.space_continuation_after_predecessors(
+                    &target,
+                    focus_binding.as_ref(),
+                    event.device_id(),
+                    current,
+                )
+            }
+            _ => None,
+        };
+        let protect_space = continuation.is_none()
+            && matches!(&payload,
+            InputEnvelopePayload::Keyboard(event) if event.physical_key() == &PhysicalKey::Space
+                && event.phase() == KeyboardPhase::Down && !event.is_repeat()
+                && event.composition_state() == KeyboardCompositionState::Inactive);
+        // This declaration covers every state reachable behind accepted FIFO
+        // predecessors. The mounted route is still resolved at processing time;
+        // reserving its current shape would not protect that contract.
+        let profile = self
+            .interaction_producer_budget
+            .map(|budget| budget(self.state()))
+            .filter(|profile| self.application_output_budget_fits(*profile));
+        if profile.is_none() && continuation.is_none() {
+            return Err((SubmitKeyboardErrorKind::InvalidProducerProfile, payload));
+        }
+        let producer = if let Some(key) = &continuation {
+            self.queue.preflight_input_continuation(key).and_then(|()| {
+                self.queue
+                    .input_continuation(key)
+                    .ok_or(crate::queue::QueueReservationError::Stale)
+            })
+        } else {
+            self.reserve_producer(profile.unwrap_or_else(|| unreachable!("fresh profile checked")))
+        };
+        let producer_reservation = match producer {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                let kind = match error {
+                    crate::queue::QueueReservationError::Capacity => SubmitKeyboardErrorKind::Full,
+                    crate::queue::QueueReservationError::WorkCapacity(family) => {
+                        SubmitKeyboardErrorKind::WorkCapacity(family)
+                    }
+                    crate::queue::QueueReservationError::Closed => SubmitKeyboardErrorKind::Closed,
+                    crate::queue::QueueReservationError::SequenceExhausted => {
+                        SubmitKeyboardErrorKind::WorkSequenceExhausted
+                    }
+                    crate::queue::QueueReservationError::Foreign
+                    | crate::queue::QueueReservationError::Stale
+                    | crate::queue::QueueReservationError::Exhausted => {
+                        SubmitKeyboardErrorKind::InvalidProducerProfile
+                    }
+                };
+                return Err((kind, payload));
+            }
+        };
+        if protect_space
+            && self
+                .queue
+                .preflight_input_continuations(&producer_reservation, 1)
+                .is_err()
+        {
+            self.release_unused_reservation(&producer_reservation);
+            return Err((SubmitKeyboardErrorKind::InvalidProducerProfile, payload));
+        }
         let Some(reservation) = self.trace.reserve_input_outcome() else {
+            if continuation.is_none() {
+                self.release_unused_reservation(&producer_reservation);
+            }
             return Err((SubmitKeyboardErrorKind::TraceSequenceExhausted, payload));
         };
         let Some(sequence) = self.queue.next_sequence() else {
             self.trace.release_reservation(reservation);
+            if continuation.is_none() {
+                self.release_unused_reservation(&producer_reservation);
+            }
             return Err((SubmitKeyboardErrorKind::WorkSequenceExhausted, payload));
         };
         let instant = self.now();
@@ -1100,19 +1310,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         if self.trace.is_enabled() && accepted.is_none() {
             self.trace.release_reservation(reservation);
+            if continuation.is_none() {
+                self.release_unused_reservation(&producer_reservation);
+            }
             return Err((SubmitKeyboardErrorKind::TraceSequenceExhausted, payload));
         }
-        let committed = self
-            .queue
-            .push_input_preflighted(
+        let envelope = |sequence, _root| {
+            crate::queue::WorkEnvelope::Input(InputEnvelope {
+                sequence,
                 target,
                 payload,
                 focus_binding,
+                text_revoked: false,
+                root_quota: None,
                 instant,
-                accepted,
-                reservation,
-            )
-            .unwrap_or_else(|_| unreachable!("input queue was preflighted"));
+                causal_parent: accepted,
+                trace_reservation: reservation,
+            })
+        };
+        let committed = if let Some(key) = &continuation {
+            self.queue.push_input_continuation(key, envelope)
+        } else {
+            self.queue
+                .push_reserved_with_remainder(&producer_reservation, envelope)
+        }
+        .unwrap_or_else(|_| unreachable!("input queue was preflighted"));
+        if protect_space {
+            self.queue
+                .retain_input_continuation(
+                    producer_reservation.quota(),
+                    crate::queue::InputContinuationKey::PendingSpace(committed),
+                )
+                .unwrap_or_else(|_| unreachable!("Space continuation was preflighted"));
+        }
         self.external_queue_commit_accepted();
         Ok(committed)
     }
@@ -1127,6 +1357,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target,
             focus_binding,
             text_revoked,
+            root_quota,
             payload,
             instant,
             causal_parent,
@@ -1192,7 +1423,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let origin = CommandOrigin::__runtime_keyboard();
         let event_context = Self::routed_input_event_context(&payload);
-        let facts = RoutedIngressFacts::new(
+        let mut facts = RoutedIngressFacts::new(
             sequence,
             target.clone(),
             origin,
@@ -1201,6 +1432,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        if let Some(root) = root_quota {
+            facts = facts.with_root_quota(root);
+        }
         let space_owner_before = matches!(
             &payload,
             InputEnvelopePayload::Keyboard(event)

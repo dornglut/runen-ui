@@ -1,3 +1,16 @@
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     Brush, Color, DropShadow, Element, LogicalLength, LogicalRect, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneLayer,
@@ -24,6 +37,22 @@ struct LayeredPaint {
 }
 
 impl Widget<()> for LayeredPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -48,6 +77,28 @@ impl Widget<()> for LayeredPaint {
 struct GroupedApp;
 
 impl UiApp for GroupedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 4 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -85,6 +136,28 @@ impl UiApp for GroupedApp {
 struct UngroupedApp;
 
 impl UiApp for UngroupedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 3 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -110,6 +183,28 @@ impl UiApp for UngroupedApp {
 struct SiblingGroupsApp;
 
 impl UiApp for SiblingGroupsApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 5 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(5, 5, 5)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -145,6 +240,28 @@ impl UiApp for SiblingGroupsApp {
 struct EmptyGroupApp;
 
 impl UiApp for EmptyGroupApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -205,7 +322,7 @@ fn only_group(entry: PaintSceneEntry) -> PaintSceneGroupId {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn static_node_effect_groups_contract_at_first_member_without_changing_pre_group_items() {
-    let mut runtime = AppRuntime::<GroupedApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<GroupedApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -245,7 +362,7 @@ fn static_node_effect_groups_contract_at_first_member_without_changing_pre_group
 
 #[test]
 fn sibling_groups_contract_by_first_member_and_descendant_layers_do_not_escape() {
-    let mut runtime = AppRuntime::<SiblingGroupsApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<SiblingGroupsApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -275,7 +392,7 @@ fn sibling_groups_contract_by_first_member_and_descendant_layers_do_not_escape()
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn identity_defaults_preserve_exact_ungrouped_m6_root_order() {
-    let mut runtime = AppRuntime::<UngroupedApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<UngroupedApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -291,7 +408,7 @@ fn identity_defaults_preserve_exact_ungrouped_m6_root_order() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn static_effect_group_with_no_admitted_descendant_paint_is_omitted() {
-    let mut runtime = AppRuntime::<EmptyGroupApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<EmptyGroupApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
