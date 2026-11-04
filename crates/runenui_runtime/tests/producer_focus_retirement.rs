@@ -469,7 +469,9 @@ fn interrupted_focusout_route_never_certifies_old_target_cleanup() {
         let mut app = focused_held_runtime(32, trace, OutputMode::StopAtCapture);
         app.submit_action(Action::Disable)
             .unwrap_or_else(|_| unreachable!("disablement admitted"));
-        let batch = app.pump(FULL).unwrap_or_else(|_| unreachable!("focus action processed"));
+        let batch = app
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("focus action processed"));
         assert_eq!(app.status(), RuntimeStatus::Running);
         assert!(app.focus().focused_node().is_none());
         assert!(app.state().log.borrow().iter().any(|fact| matches!(
@@ -480,17 +482,20 @@ fn interrupted_focusout_route_never_certifies_old_target_cleanup() {
             fact,
             Fact::Out(EventPhase::Target, FocusReason::Disablement, _)
         )));
-        assert!(!batch.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::FocusRecipientRetired(_)
-        )));
+        assert!(
+            !batch
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::FocusRecipientRetired(_)))
+        );
         if trace != 0 {
             assert!(app.trace().records().any(|record| matches!(
                 record.kind(),
                 TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out
                 }
-            ) && record.context().delivery() == Some(runenui_runtime::TraceDeliveryOutcome::Suppressed)));
+            ) && record.context().delivery()
+                == Some(runenui_runtime::TraceDeliveryOutcome::Suppressed)));
         }
     }
 }
