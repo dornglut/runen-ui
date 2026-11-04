@@ -273,7 +273,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         event: &UiEvent,
         route: Vec<MountedNodeId>,
         related: Option<&MountedNodeId>,
-    ) -> Result<(), TraceRoutedIntegrityFailure> {
+    ) -> Result<(bool, Vec<MountedNodeId>), TraceRoutedIntegrityFailure> {
         let target = route
             .last()
             .cloned()
@@ -308,6 +308,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cloned()
                 .map(|id| (EventPhase::Bubble, id)),
         );
+        let required = invocations.len();
+        let mut completed = 0;
         let mut result = Ok(());
         for (phase, current) in invocations {
             if transaction.propagation_stopped {
@@ -319,15 +321,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 result = Err(error);
                 break;
             }
+            completed += 1;
         }
 
         transaction.target = saved_target;
-        transaction.route = saved_route;
+        let completed_route = core::mem::replace(&mut transaction.route, saved_route);
         transaction.target_trace = saved_trace;
         transaction.propagation_stopped = saved_stopped;
         transaction.default_prevented = saved_prevented;
         transaction.collecting_notification_outputs = saved_notifications;
-        result
+        // A short-circuited route is not a completed old-recipient retirement,
+        // even when the already invoked callback phases returned successfully.
+        result.map(|()| (completed == required, completed_route))
     }
 
     #[allow(clippy::too_many_arguments)]
