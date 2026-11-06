@@ -69,8 +69,8 @@ original member's work sequence, settlement or trace acceptance, including
 when the second member's bounded reservation succeeded but the first cannot
 be admitted. On success, both members enter the one FIFO in original order,
 with separate exact work-sequence receipts and the **same original** runtime
-focus-session witness, without any pump, callback or focus mutation between
-members. Reserving the second member first prevents other queued application
+focus-session witness, without any pump, routed UI callback or focus mutation
+between members; normal host wake signaling is still permitted. Reserving the second member first prevents other queued application
 work from interposing between the two original members. A terminal keyboard
 receipt during later legal partial work neither proves global quiescence nor
 retroactively admits text; both original members are already in M13.

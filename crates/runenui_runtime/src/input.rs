@@ -729,8 +729,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// for both records is the SAME original runtime focus lifetime.
     ///
     /// A successful return gives two distinct, ordered work-sequence receipts;
-    /// neither implies that a later pump has settled either input. No callbacks,
-    /// editing, routing or focus transitions run between the two commits.
+    /// neither implies that a later pump has settled either input. No routed UI
+    /// callback, editing or focus transition occurs between the two commits;
+    /// ordinary host wake signaling remains an independent transport effect.
     pub(crate) fn submit_keyboard_with_text(
         &mut self,
         keyboard: KeyboardEvent,

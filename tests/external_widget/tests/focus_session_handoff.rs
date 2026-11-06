@@ -353,7 +353,9 @@ fn paired_keyboard_text_refuses_unknown_pending_presentation_without_partial_ing
         SubmitKeyboardWithTextErrorKind::Text(SubmitTextErrorKind::PendingFocusHandoff)
     ));
     assert_eq!(error.text().text(), "é");
-    let settled = runtime.pump(FULL).unwrap_or_else(|_| unreachable!("canonical pump"));
+    let settled = runtime
+        .pump(FULL)
+        .unwrap_or_else(|_| unreachable!("canonical pump"));
     assert!(
         !settled
             .ordered_records()
