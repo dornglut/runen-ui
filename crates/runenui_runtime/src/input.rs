@@ -172,23 +172,37 @@ pub enum SubmitKeyboardWithTextErrorKind {
     Text(SubmitTextErrorKind),
 }
 
+fn validate_keyboard_with_text_pair(
+    keyboard: &KeyboardEvent,
+    text: &CommittedTextEvent,
+) -> Result<(), SubmitKeyboardWithTextErrorKind> {
+    if keyboard.device_id() != text.device_id() {
+        return Err(SubmitKeyboardWithTextErrorKind::DeviceMismatch);
+    }
+    if keyboard.phase() != KeyboardPhase::Down {
+        return Err(SubmitKeyboardWithTextErrorKind::NotKeyDown);
+    }
+    if keyboard.composition_state() == KeyboardCompositionState::Active {
+        return Err(SubmitKeyboardWithTextErrorKind::CompositionActive);
+    }
+    Ok(())
+}
+
 #[must_use]
 pub struct SubmitKeyboardWithTextError {
     kind: SubmitKeyboardWithTextErrorKind,
-    keyboard: KeyboardEvent,
-    text: CommittedTextEvent,
+    events: Box<(KeyboardEvent, CommittedTextEvent)>,
 }
 
 impl SubmitKeyboardWithTextError {
-    const fn new(
+    fn new(
         kind: SubmitKeyboardWithTextErrorKind,
         keyboard: KeyboardEvent,
         text: CommittedTextEvent,
     ) -> Self {
         Self {
             kind,
-            keyboard,
-            text,
+            events: Box::new((keyboard, text)),
         }
     }
 
@@ -198,18 +212,18 @@ impl SubmitKeyboardWithTextError {
     }
 
     #[must_use]
-    pub const fn keyboard(&self) -> &KeyboardEvent {
-        &self.keyboard
+    pub fn keyboard(&self) -> &KeyboardEvent {
+        &self.events.0
     }
 
     #[must_use]
-    pub const fn text(&self) -> &CommittedTextEvent {
-        &self.text
+    pub fn text(&self) -> &CommittedTextEvent {
+        &self.events.1
     }
 
     #[must_use]
     pub fn into_events(self) -> (KeyboardEvent, CommittedTextEvent) {
-        (self.keyboard, self.text)
+        *self.events
     }
 }
 
@@ -699,29 +713,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         use crate::queue::QueueReservationError;
         use SubmitKeyboardWithTextErrorKind::{Keyboard, Text};
 
-        // Source identity and original key phase are immutable constraints.
-        // No queue/trace/focus reservation may be consumed by an invalid pair.
-        if keyboard.device_id() != text.device_id() {
-            return Err(SubmitKeyboardWithTextError::new(
-                SubmitKeyboardWithTextErrorKind::DeviceMismatch,
-                keyboard,
-                text,
-            ));
-        }
-        if keyboard.phase() != KeyboardPhase::Down {
-            return Err(SubmitKeyboardWithTextError::new(
-                SubmitKeyboardWithTextErrorKind::NotKeyDown,
-                keyboard,
-                text,
-            ));
-        }
-        if keyboard.composition_state() == KeyboardCompositionState::Active {
-            return Err(SubmitKeyboardWithTextError::new(
-                SubmitKeyboardWithTextErrorKind::CompositionActive,
-                keyboard,
-                text,
-            ));
-        }
+        // Reject invalid originals without consuming queue, trace or focus credits.
+        validate_keyboard_with_text_pair(&keyboard, &text)
+            .map_err(|kind| SubmitKeyboardWithTextError::new(kind, keyboard.clone(), text.clone()))?;
 
         let target = self.input_target_text().map_err(|kind| {
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
