@@ -2401,9 +2401,7 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
 
 #[test]
 fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() {
-    use crate::{
-        SubmitKeyboardErrorKind, SubmitKeyboardWithTextErrorKind, RuntimeConfig,
-    };
+    use crate::{RuntimeConfig, SubmitKeyboardErrorKind, SubmitKeyboardWithTextErrorKind};
     use runenui_core::CommittedTextEvent;
 
     // Exactly three independent application producer roots, plus ONLY the
@@ -2442,7 +2440,12 @@ fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() 
             .unwrap_or_else(|_| unreachable!("legal independent producer root"));
     }
     assert!(app.runtime.queue.preflight_commit(text_credits).is_ok());
-    assert!(app.runtime.queue.preflight_commit(text_credits + 1).is_err());
+    assert!(
+        app.runtime
+            .queue
+            .preflight_commit(text_credits + 1)
+            .is_err()
+    );
     let before = app.runtime.queue.next_sequence();
 
     let keyboard = KeyboardEvent::new(
@@ -2472,7 +2475,8 @@ fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() 
     assert_eq!(rejection.text().text(), "v");
     assert!(app.runtime.queue.preflight_commit(text_credits).is_ok());
 
-    let completed = app.pump(PumpBudget::new(128, 128, 128, 128))
+    let completed = app
+        .pump(PumpBudget::new(128, 128, 128, 128))
         .unwrap_or_else(|_| unreachable!("earlier unrelated actions finish"));
     assert!(
         !completed

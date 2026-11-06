@@ -199,8 +199,7 @@ fn public_host_pair_has_two_ordered_exact_input_receipts_with_trace_on_or_off() 
     use runenui_core::CommittedTextEvent;
 
     for trace_capacity in [0, 512] {
-        let config =
-            RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
         let observations = Rc::new(RefCell::new(Vec::new()));
         let mut runtime = focused::<CompositionApp>(observations, config);
         let before = runtime
