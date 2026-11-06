@@ -696,6 +696,34 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
+    /// Preflight the existing canonical text producer without committing any
+    /// input or sequence. The caller either consumes the reservation with the
+    /// original text or releases it if original keyboard admission refuses.
+    fn reserve_paired_text_producer(
+        &mut self,
+    ) -> Result<crate::queue::QueueReservation, SubmitTextErrorKind> {
+        use crate::queue::QueueReservationError;
+
+        let profile = self
+            .interaction_producer_budget
+            .map(|budget| budget(self.state()))
+            .filter(|profile| self.application_output_budget_fits(*profile))
+            .ok_or(SubmitTextErrorKind::InvalidProducerProfile)?;
+        self.reserve_producer(profile).map_err(|error| match error {
+            QueueReservationError::Capacity => SubmitTextErrorKind::Full,
+            QueueReservationError::WorkCapacity(family) => {
+                SubmitTextErrorKind::WorkCapacity(family)
+            }
+            QueueReservationError::Closed => SubmitTextErrorKind::Closed,
+            QueueReservationError::SequenceExhausted => {
+                SubmitTextErrorKind::WorkSequenceExhausted
+            }
+            QueueReservationError::Foreign
+            | QueueReservationError::Stale
+            | QueueReservationError::Exhausted => SubmitTextErrorKind::InvalidProducerProfile,
+        })
+    }
+
     /// Admission of one original keyboard occurrence and its associated
     /// Unicode text. Reserve the text root and mandatory trace outcome BEFORE
     /// admitting keyboard work, so all fallible admission happens before either
@@ -710,12 +738,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         keyboard: KeyboardEvent,
         text: CommittedTextEvent,
     ) -> Result<(KeyboardSubmission, TextSubmission), SubmitKeyboardWithTextError> {
-        use crate::queue::QueueReservationError;
         use SubmitKeyboardWithTextErrorKind::{Keyboard, Text};
 
         // Reject invalid originals without consuming queue, trace or focus credits.
-        validate_keyboard_with_text_pair(&keyboard, &text)
-            .map_err(|kind| SubmitKeyboardWithTextError::new(kind, keyboard.clone(), text.clone()))?;
+        if let Err(kind) = validate_keyboard_with_text_pair(&keyboard, &text) {
+            return Err(SubmitKeyboardWithTextError::new(kind, keyboard, text));
+        }
 
         let target = self.input_target_text().map_err(|kind| {
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
@@ -724,31 +752,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             crate::queue::FocusInputBinding::Uncertified,
             crate::queue::FocusInputBinding::Committed,
         );
-        let profile = self
-            .interaction_producer_budget
-            .map(|budget| budget(self.state()))
-            .filter(|profile| self.application_output_budget_fits(*profile))
-            .ok_or_else(|| {
-                SubmitKeyboardWithTextError::new(
-                    Text(SubmitTextErrorKind::InvalidProducerProfile),
-                    keyboard.clone(),
-                    text.clone(),
-                )
-            })?;
-        let text_reservation = self.reserve_producer(profile).map_err(|error| {
-            let kind = match error {
-                QueueReservationError::Capacity => SubmitTextErrorKind::Full,
-                QueueReservationError::WorkCapacity(family) => {
-                    SubmitTextErrorKind::WorkCapacity(family)
-                }
-                QueueReservationError::Closed => SubmitTextErrorKind::Closed,
-                QueueReservationError::SequenceExhausted => {
-                    SubmitTextErrorKind::WorkSequenceExhausted
-                }
-                QueueReservationError::Foreign
-                | QueueReservationError::Stale
-                | QueueReservationError::Exhausted => SubmitTextErrorKind::InvalidProducerProfile,
-            };
+        let text_reservation = self.reserve_paired_text_producer().map_err(|kind| {
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
         })?;
         let Some(trace_reservation) = self.trace.reserve_input_outcome() else {
