@@ -194,6 +194,82 @@ impl UiApp for CompositionApp {
     fn update(_: &mut Self::State, (): ()) {}
 }
 
+#[test]
+fn public_host_pair_has_two_ordered_exact_input_receipts_with_trace_on_or_off() {
+    use runenui_core::CommittedTextEvent;
+
+    for trace_capacity in [0, 512] {
+        let config =
+            RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let observations = Rc::new(RefCell::new(Vec::new()));
+        let mut runtime = focused::<CompositionApp>(observations, config);
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("original focused input scope"));
+        let scope = before.scope().clone();
+
+        let (keyboard, text) = runtime
+            .submit_keyboard_with_text(
+                key(),
+                CommittedTextEvent::new("é", None)
+                    .unwrap_or_else(|_| unreachable!("original committed Unicode text")),
+            )
+            .unwrap_or_else(|error| unreachable!("public paired ingress: {error}"));
+        assert!(
+            keyboard.sequence() < text.sequence(),
+            "both original members must get ordered canonical work identities"
+        );
+        runtime
+            .submit_action(())
+            .unwrap_or_else(|_| unreachable!("later independent application work"));
+        let batch = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("one canonical public pump"));
+        let emitted = settlements(&batch);
+        let keyboard_receipts: Vec<_> = emitted
+            .iter()
+            .filter(|record| record.sequence() == keyboard.sequence())
+            .collect();
+        let text_receipts: Vec<_> = emitted
+            .iter()
+            .filter(|record| record.sequence() == text.sequence())
+            .collect();
+        assert_eq!(keyboard_receipts.len(), 1);
+        assert_eq!(text_receipts.len(), 1);
+        exact_receipt(
+            keyboard_receipts[0],
+            &scope,
+            keyboard.sequence(),
+            UiInputFamily::Keyboard,
+        );
+        exact_receipt(
+            text_receipts[0],
+            &scope,
+            text.sequence(),
+            UiInputFamily::CommittedText,
+        );
+        assert!(matches!(
+            text_receipts[0].finality(),
+            UiInputFinality::Committed(_)
+        ));
+        assert_eq!(
+            batch.processed_through().is_some_and(|last| last >= text.sequence()),
+            true,
+            "an exact text terminal receipt cannot be inferred from keyboard alone"
+        );
+        let later = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("later pending-work observation"));
+        assert!(
+            !settlements(&later).iter().any(|record| {
+                record.sequence() == keyboard.sequence() || record.sequence() == text.sequence()
+            }),
+            "canonical M13 input finality is once-only with and without trace"
+        );
+        trace_bound(&runtime, trace_capacity);
+    }
+}
+
 fn stale_composition_trace(runtime: &AppRuntime<CompositionApp>, sequence: WorkSequence) {
     assert!(
         runtime
