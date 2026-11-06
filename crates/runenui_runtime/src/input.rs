@@ -179,7 +179,11 @@ impl SubmitKeyboardWithTextError {
         keyboard: KeyboardEvent,
         text: CommittedTextEvent,
     ) -> Self {
-        Self { kind, keyboard, text }
+        Self {
+            kind,
+            keyboard,
+            text,
+        }
     }
 
     #[must_use]
@@ -213,7 +217,11 @@ impl fmt::Debug for SubmitKeyboardWithTextError {
 
 impl fmt::Display for SubmitKeyboardWithTextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "paired keyboard/text submission rejected: {:?}", self.kind)
+        write!(
+            f,
+            "paired keyboard/text submission rejected: {:?}",
+            self.kind
+        )
     }
 }
 
@@ -715,9 +723,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 }
                 QueueReservationError::Foreign
                 | QueueReservationError::Stale
-                | QueueReservationError::Exhausted => {
-                    SubmitTextErrorKind::InvalidProducerProfile
-                }
+                | QueueReservationError::Exhausted => SubmitTextErrorKind::InvalidProducerProfile,
             };
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
         })?;

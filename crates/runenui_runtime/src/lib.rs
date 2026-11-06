@@ -240,8 +240,7 @@ pub use input::{
     CompositionSubmission, KeyboardSubmission, SubmitAutomationError, SubmitAutomationErrorKind,
     SubmitCompositionError, SubmitCompositionErrorKind, SubmitCompositionStartError,
     SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitKeyboardWithTextError,
-    SubmitKeyboardWithTextErrorKind, SubmitTextError, SubmitTextErrorKind,
-    TextSubmission,
+    SubmitKeyboardWithTextErrorKind, SubmitTextError, SubmitTextErrorKind, TextSubmission,
 };
 pub use input_arbitration::{
     InputArbitrationRecord, InputArbitrationScope, InputObservationError, InputOwnershipRevision,

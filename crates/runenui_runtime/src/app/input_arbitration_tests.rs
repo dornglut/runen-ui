@@ -2268,7 +2268,9 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
     )
     .unwrap_or_else(|_| unreachable!("focus request"));
     let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
-    let before = app.input_ownership().unwrap_or_else(|_| unreachable!("focused snapshot"));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focused snapshot"));
     let (key, text) = pair();
     let (keyboard, committed) = app
         .submit_keyboard_with_text(key, text)
@@ -2281,46 +2283,65 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
         app.submit_action(())
             .unwrap_or_else(|_| unreachable!("legal later application action"));
     }
-    let first = app.pump(PumpBudget::new(128, 64, 64, 64))
+    let first = app
+        .pump(PumpBudget::new(128, 64, 64, 64))
         .unwrap_or_else(|_| unreachable!("canonical partial pump"));
-    assert_eq!(first.report().outcome(), crate::PumpOutcome::BudgetExhausted);
     assert_eq!(
-        first.ordered_records().iter().filter(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(settled)
-                if settled.sequence() == keyboard.sequence()
-                    && settled.family() == UiInputFamily::Keyboard
-                    && settled.scope() == before.scope()
-                    && settled.device_id() == Some(device(71))
-        )).count(),
+        first.report().outcome(),
+        crate::PumpOutcome::BudgetExhausted
+    );
+    assert_eq!(
+        first
+            .ordered_records()
+            .iter()
+            .filter(|record| matches!(
+                record,
+                InputArbitrationRecord::InputSettled(settled)
+                    if settled.sequence() == keyboard.sequence()
+                        && settled.family() == UiInputFamily::Keyboard
+                        && settled.scope() == before.scope()
+                        && settled.device_id() == Some(device(71))
+            ))
+            .count(),
         1
     );
     assert_eq!(
-        first.ordered_records().iter().filter(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(settled)
-                if settled.sequence() == committed.sequence()
-                    && settled.family() == UiInputFamily::CommittedText
-                    && settled.scope() == before.scope()
-                    && settled.device_id() == Some(device(71))
-        )).count(),
+        first
+            .ordered_records()
+            .iter()
+            .filter(|record| matches!(
+                record,
+                InputArbitrationRecord::InputSettled(settled)
+                    if settled.sequence() == committed.sequence()
+                        && settled.family() == UiInputFamily::CommittedText
+                        && settled.scope() == before.scope()
+                        && settled.device_id() == Some(device(71))
+            ))
+            .count(),
         1
     );
     let mut settled = false;
     for _ in 0..32 {
-        let next = app.pump(PumpBudget::new(128, 64, 64, 64))
+        let next = app
+            .pump(PumpBudget::new(128, 64, 64, 64))
             .unwrap_or_else(|_| unreachable!("bounded application backlog"));
-        assert!(!next.ordered_records().iter().any(|record| matches!(
-            record, InputArbitrationRecord::InputSettled(receipt)
-                if receipt.sequence() == keyboard.sequence()
-                    || receipt.sequence() == committed.sequence()
-        )), "two original M13 receipts must never replay");
+        assert!(
+            !next.ordered_records().iter().any(|record| matches!(
+                record, InputArbitrationRecord::InputSettled(receipt)
+                    if receipt.sequence() == keyboard.sequence()
+                        || receipt.sequence() == committed.sequence()
+            )),
+            "two original M13 receipts must never replay"
+        );
         if next.report().is_quiescent() {
             settled = true;
             break;
         }
     }
-    assert!(settled, "finite independent 390-action work eventually settles");
+    assert!(
+        settled,
+        "finite independent 390-action work eventually settles"
+    );
 }
 
 #[test]
