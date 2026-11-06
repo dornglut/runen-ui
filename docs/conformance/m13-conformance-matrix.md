@@ -36,6 +36,33 @@ These rows extend—not replace—M4 canonical routing, M7 host embedding, M10 e
 | M13ARB-09 | Logical retained RunenUI context and host-completed Present/display association remain distinct; input is mapped through exact runtime/surface/host-lifetime identity across publication, detach and rebind. | #428 public input-context proof and separately owned Runenwerk #1239 native target/Present association; delayed/reordered Present and valid prior retained generation or publication retry fixtures. | New logical publication without successful Present is not displayed; rejected/foreign/retired generation, lost device, unrelated runtime/overlay cannot silently retarget or acquire second focus. | Existing exact publication/hit generation and native completed-Present ledger; no trace-as-routing authority. | M13ARB | blocked | Required |
 | M13ARB-10 | The target API is usable by independent public Rust consumers, generic widgets and real embedded/native hosts without private RunenUI types or a second authority, with complete canonical exact-head validation. | #428 public-only external crate with two typed apps/custom widget plus RunenUI canonical stable validation and separately reviewed Runenwerk/native host execution. | No private test seams, duplicate UI queue/focus, new core↔runtime cycle, OS/Engine dependency, bypassed host policy or claimed native execution from source inspection. | Public compile/negative conformance, repository architecture audit, trace-independent deterministic result and exact CI/native execution evidence as applicable. | M13ARB | blocked | Required |
 
+## #549 — original keyboard/committed-text paired admission proof
+
+M13ARB-01/02/05/06/10 additionally require the public
+`AppRuntime::submit_keyboard_with_text` boundary to submit one genuine
+source-consistent original keyboard Down and its associated Unicode committed
+text **together or not at all**, without creating a second input authority.
+
+Positive proof: the runtime-only input arbitration tests and independent
+public-only `input_arbitration_finality` consumer exercise both original
+`(scope, sequence, family, device)` receipts in the one ordered pump stream,
+including 390 unrelated legal application actions, trace enabled/disabled,
+and terminal exactly-once continuation. The original focus generation must
+survive normal pending admission without being reconstructed by the host.
+
+Negative proof: no focus/text capability, wrong keyboard/text device identity,
+Up/Cancel or active composition carrying text, reserved text followed by
+keyboard queue-full refusal, and original A→B→A focus lifetime retirement
+must not partially admit or retarget input. A rejected pair returns **both**
+unchanged original payloads with a typed refusal and creates **no** input
+settlement. When an accepted member later reaches an invalid original focus
+binding, its **own** processing finality is
+`ProcessingRejected(FocusBindingInvalidated)`; no already-settled receipt is
+replayed and no UI failure becomes game permission. Secret text is not
+exposed through host-visible trace or source diagnostics. Ordinary IME
+preedit/Commit/Disable ingress remains separately governed and must not be
+conflated with an original keyboard text payload.
+
 ## Gate and proof custody
 
 Producer-contract failure follows
