@@ -715,9 +715,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 SubmitTextErrorKind::WorkCapacity(family)
             }
             QueueReservationError::Closed => SubmitTextErrorKind::Closed,
-            QueueReservationError::SequenceExhausted => {
-                SubmitTextErrorKind::WorkSequenceExhausted
-            }
+            QueueReservationError::SequenceExhausted => SubmitTextErrorKind::WorkSequenceExhausted,
             QueueReservationError::Foreign
             | QueueReservationError::Stale
             | QueueReservationError::Exhausted => SubmitTextErrorKind::InvalidProducerProfile,
