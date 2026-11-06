@@ -59,7 +59,10 @@ same original optional device identity; Up/Cancel and a composing keyboard
 may not be paired with committed text (IME composition/Commit has its own
 canonical ingress). The text-capable focused recipient, current edit capacity,
 queue root, work-sequence frontier and mandatory trace outcome are checked
-**before** admitting the keyboard member.
+**before** admitting the keyboard member. A still-pending presentation-focus
+entry is a typed paired-ingress refusal (`PendingFocusHandoff`), even when
+an individual keyboard could certify that entry: the ordinary keyboard and
+text APIs can otherwise select different focus witnesses for one original pair.
 
 A typed refusal returns **both** original events and produces **neither**
 original member's work sequence, settlement or trace acceptance, including

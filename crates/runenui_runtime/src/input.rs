@@ -746,6 +746,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let target = self.input_target_text().map_err(|kind| {
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
         })?;
+        // A keyboard may certify one pending presentation entry whereas text
+        // would bind the currently committed focus session. Refuse the pair
+        // rather than publish two different focus witnesses as one original.
+        if self.queue.pending_presentation_entry().0 != 0 {
+            return Err(SubmitKeyboardWithTextError::new(
+                Text(SubmitTextErrorKind::PendingFocusHandoff),
+                keyboard,
+                text,
+            ));
+        }
         let focus_binding = self.focus.session().map_or(
             crate::queue::FocusInputBinding::Uncertified,
             crate::queue::FocusInputBinding::Committed,

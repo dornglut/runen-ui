@@ -50,8 +50,9 @@ including 390 unrelated legal application actions, trace enabled/disabled,
 and terminal exactly-once continuation. The original focus generation must
 survive normal pending admission without being reconstructed by the host.
 
-Negative proof: no focus/text capability, wrong keyboard/text device identity,
-Up/Cancel or active composition carrying text, reserved text followed by
+Negative proof: no focus/text capability, pending presentation-focus entry,
+wrong keyboard/text device identity, Up/Cancel or active composition carrying text,
+reserved text followed by
 keyboard queue-full refusal, and original A→B→A focus lifetime retirement
 must not partially admit or retarget input. A rejected pair returns **both**
 unchanged original payloads with a typed refusal and creates **no** input
