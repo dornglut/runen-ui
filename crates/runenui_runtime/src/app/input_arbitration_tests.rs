@@ -2442,8 +2442,7 @@ fn paired_keyboard_text_admits_behind_390_existing_actions_without_retarget_or_r
             .unwrap_or_else(|_| unreachable!("bounded canonical M13 pump"));
         for record in batch.ordered_records() {
             if let InputArbitrationRecord::InputSettled(settled) = record
-                && (settled.sequence() == key.sequence()
-                    || settled.sequence() == text.sequence())
+                && (settled.sequence() == key.sequence() || settled.sequence() == text.sequence())
             {
                 assert_eq!(settled.scope(), &scope);
                 assert_eq!(settled.device_id(), Some(device(71)));
@@ -2465,7 +2464,10 @@ fn paired_keyboard_text_admits_behind_390_existing_actions_without_retarget_or_r
             break;
         }
     }
-    assert!(completed, "all preceding and original canonical work must finish");
+    assert!(
+        completed,
+        "all preceding and original canonical work must finish"
+    );
     assert_eq!(
         seen,
         [
