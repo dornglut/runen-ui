@@ -157,6 +157,68 @@ impl fmt::Display for SubmitTextError {
 }
 impl std::error::Error for SubmitTextError {}
 
+/// One original host keyboard occurrence carrying associated committed text.
+/// Rejection returns BOTH original payloads; neither enters the canonical FIFO.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SubmitKeyboardWithTextErrorKind {
+    Keyboard(SubmitKeyboardErrorKind),
+    Text(SubmitTextErrorKind),
+}
+
+#[must_use]
+pub struct SubmitKeyboardWithTextError {
+    kind: SubmitKeyboardWithTextErrorKind,
+    keyboard: KeyboardEvent,
+    text: CommittedTextEvent,
+}
+
+impl SubmitKeyboardWithTextError {
+    const fn new(
+        kind: SubmitKeyboardWithTextErrorKind,
+        keyboard: KeyboardEvent,
+        text: CommittedTextEvent,
+    ) -> Self {
+        Self { kind, keyboard, text }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> SubmitKeyboardWithTextErrorKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn keyboard(&self) -> &KeyboardEvent {
+        &self.keyboard
+    }
+
+    #[must_use]
+    pub const fn text(&self) -> &CommittedTextEvent {
+        &self.text
+    }
+
+    #[must_use]
+    pub fn into_events(self) -> (KeyboardEvent, CommittedTextEvent) {
+        (self.keyboard, self.text)
+    }
+}
+
+impl fmt::Debug for SubmitKeyboardWithTextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SubmitKeyboardWithTextError")
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Display for SubmitKeyboardWithTextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "paired keyboard/text submission rejected: {:?}", self.kind)
+    }
+}
+
+impl std::error::Error for SubmitKeyboardWithTextError {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TextSubmission {
     sequence: WorkSequence,
@@ -604,6 +666,134 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 };
                 SubmitKeyboardError::new(kind, event)
             })
+    }
+
+    /// Admission of one original keyboard occurrence and its associated
+    /// Unicode text. Reserve the text root and mandatory trace outcome BEFORE
+    /// admitting keyboard work, so all fallible admission happens before either
+    /// original payload enters the single canonical M13 FIFO. The focus witness
+    /// for both records is the SAME original runtime focus lifetime.
+    ///
+    /// A successful return gives two distinct, ordered work-sequence receipts;
+    /// neither implies that a later pump has settled either input. No callbacks,
+    /// editing, routing or focus transitions run between the two commits.
+    pub(crate) fn submit_keyboard_with_text(
+        &mut self,
+        keyboard: KeyboardEvent,
+        text: CommittedTextEvent,
+    ) -> Result<(KeyboardSubmission, TextSubmission), SubmitKeyboardWithTextError> {
+        use crate::queue::QueueReservationError;
+        use SubmitKeyboardWithTextErrorKind::{Keyboard, Text};
+
+        let target = self.input_target_text().map_err(|kind| {
+            SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
+        })?;
+        let focus_binding = self.focus.session().map_or(
+            crate::queue::FocusInputBinding::Uncertified,
+            crate::queue::FocusInputBinding::Committed,
+        );
+        let profile = self
+            .interaction_producer_budget
+            .map(|budget| budget(self.state()))
+            .filter(|profile| self.application_output_budget_fits(*profile))
+            .ok_or_else(|| {
+                SubmitKeyboardWithTextError::new(
+                    Text(SubmitTextErrorKind::InvalidProducerProfile),
+                    keyboard.clone(),
+                    text.clone(),
+                )
+            })?;
+        let text_reservation = self.reserve_producer(profile).map_err(|error| {
+            let kind = match error {
+                QueueReservationError::Capacity => SubmitTextErrorKind::Full,
+                QueueReservationError::WorkCapacity(family) => {
+                    SubmitTextErrorKind::WorkCapacity(family)
+                }
+                QueueReservationError::Closed => SubmitTextErrorKind::Closed,
+                QueueReservationError::SequenceExhausted => {
+                    SubmitTextErrorKind::WorkSequenceExhausted
+                }
+                QueueReservationError::Foreign
+                | QueueReservationError::Stale
+                | QueueReservationError::Exhausted => {
+                    SubmitTextErrorKind::InvalidProducerProfile
+                }
+            };
+            SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
+        })?;
+        let Some(trace_reservation) = self.trace.reserve_input_outcome() else {
+            self.release_unused_reservation(&text_reservation);
+            return Err(SubmitKeyboardWithTextError::new(
+                Text(SubmitTextErrorKind::TraceSequenceExhausted),
+                keyboard,
+                text,
+            ));
+        };
+
+        // The reserved text admission cannot be stolen by the keyboard input.
+        // This is precisely the ordinary accepted keyboard ingress, including
+        // Space continuation and the existing focus-session binding policy.
+        let keyboard_receipt = match self.submit_keyboard(keyboard) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.trace.release_reservation(trace_reservation);
+                self.release_unused_reservation(&text_reservation);
+                return Err(SubmitKeyboardWithTextError::new(
+                    Keyboard(error.kind()),
+                    error.into_event(),
+                    text,
+                ));
+            }
+        };
+
+        // All admission refusal paths have ended. The text has its existing
+        // reservation, trace outcome and original focus-session witness.
+        let sequence = self
+            .queue
+            .next_sequence()
+            .unwrap_or_else(|| unreachable!("reserved text sequence was preflighted"));
+        let instant = self.now();
+        let payload_capture =
+            if self.editing.sensitivity(&target) == Some(runenui_core::TextSensitivity::Secret) {
+                crate::TracePayloadCapture::Redacted
+            } else {
+                self.trace.payload_capture()
+            };
+        let accepted = self.trace.record_draft(
+            TraceRecordDraft::input_fact(
+                TraceRecordKind::CommittedTextSubmissionAccepted,
+                instant,
+                TraceContext::input_record(TraceInputContext::committed_text_with_capture(
+                    text.text(),
+                    text.device_id(),
+                    payload_capture,
+                )),
+            )
+            .with_work_sequence(Some(sequence))
+            .with_target(Some(self.tree.trace_target(&target))),
+        );
+        assert!(
+            !self.trace.is_enabled() || accepted.is_some(),
+            "reserved paired-text trace admission must be infallible"
+        );
+        let committed = self
+            .queue
+            .push_reserved_with_remainder(&text_reservation, |sequence, _root| {
+                crate::queue::WorkEnvelope::Input(InputEnvelope {
+                    sequence,
+                    target,
+                    payload: InputEnvelopePayload::CommittedText(text),
+                    focus_binding: Some(focus_binding),
+                    text_revoked: false,
+                    root_quota: None,
+                    instant,
+                    causal_parent: accepted,
+                    trace_reservation,
+                })
+            })
+            .unwrap_or_else(|_| unreachable!("reserved canonical text commit is infallible"));
+        self.external_queue_commit_accepted();
+        Ok((keyboard_receipt, TextSubmission::new(committed)))
     }
 
     pub(crate) fn submit_text(

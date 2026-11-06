@@ -239,7 +239,8 @@ pub use input::{
     AutomationSubmission, CompositionStartRequest, CompositionStartSubmission,
     CompositionSubmission, KeyboardSubmission, SubmitAutomationError, SubmitAutomationErrorKind,
     SubmitCompositionError, SubmitCompositionErrorKind, SubmitCompositionStartError,
-    SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError, SubmitTextErrorKind,
+    SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitKeyboardWithTextError,
+    SubmitKeyboardWithTextErrorKind, SubmitTextError, SubmitTextErrorKind,
     TextSubmission,
 };
 pub use input_arbitration::{
