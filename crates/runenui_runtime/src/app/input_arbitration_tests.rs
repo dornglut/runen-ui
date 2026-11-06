@@ -2277,6 +2277,50 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
     let before = app
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("focused snapshot"));
+
+    let before_sequence = app.runtime.queue.next_sequence();
+    let (key, _) = pair();
+    let mismatched_text = CommittedTextEvent::new("v", Some(device(72)))
+        .unwrap_or_else(|_| unreachable!("nonempty foreign source text"));
+    let err = app
+        .submit_keyboard_with_text(key, mismatched_text)
+        .expect_err("foreign device cannot be paired with an original keyboard");
+    assert_eq!(err.kind(), SubmitKeyboardWithTextErrorKind::DeviceMismatch);
+    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
+    assert_eq!(err.text().device_id(), Some(device(72)));
+
+    let (down, text) = pair();
+    let up = KeyboardEvent::new(
+        KeyboardPhase::Up,
+        down.physical_key().clone(),
+        down.logical_key().clone(),
+        down.modifiers(),
+        false,
+        down.location(),
+        down.composition_state(),
+        down.device_id(),
+    );
+    let err = app.submit_keyboard_with_text(up, text)
+        .expect_err("a release is not an original committed-text key");
+    assert_eq!(err.kind(), SubmitKeyboardWithTextErrorKind::NotKeyDown);
+    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
+
+    let (down, text) = pair();
+    let composing = KeyboardEvent::new(
+        KeyboardPhase::Down,
+        down.physical_key().clone(),
+        down.logical_key().clone(),
+        down.modifiers(),
+        false,
+        down.location(),
+        KeyboardCompositionState::Active,
+        down.device_id(),
+    );
+    let err = app.submit_keyboard_with_text(composing, text)
+        .expect_err("composition keyboard may not duplicate an IME commit");
+    assert_eq!(err.kind(), SubmitKeyboardWithTextErrorKind::CompositionActive);
+    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
+
     let (key, text) = pair();
     let (keyboard, committed) = app
         .submit_keyboard_with_text(key, text)

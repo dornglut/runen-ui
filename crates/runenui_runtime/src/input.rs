@@ -162,6 +162,12 @@ impl std::error::Error for SubmitTextError {}
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitKeyboardWithTextErrorKind {
+    /// The source reported different physical devices for one asserted pair.
+    DeviceMismatch,
+    /// Only an original physical Down may carry ordinary associated text.
+    NotKeyDown,
+    /// Composing keys may not duplicate independently committed IME text.
+    CompositionActive,
     Keyboard(SubmitKeyboardErrorKind),
     Text(SubmitTextErrorKind),
 }
@@ -692,6 +698,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<(KeyboardSubmission, TextSubmission), SubmitKeyboardWithTextError> {
         use crate::queue::QueueReservationError;
         use SubmitKeyboardWithTextErrorKind::{Keyboard, Text};
+
+        // Source identity and original key phase are immutable constraints.
+        // No queue/trace/focus reservation may be consumed by an invalid pair.
+        if keyboard.device_id() != text.device_id() {
+            return Err(SubmitKeyboardWithTextError::new(
+                SubmitKeyboardWithTextErrorKind::DeviceMismatch,
+                keyboard,
+                text,
+            ));
+        }
+        if keyboard.phase() != KeyboardPhase::Down {
+            return Err(SubmitKeyboardWithTextError::new(
+                SubmitKeyboardWithTextErrorKind::NotKeyDown,
+                keyboard,
+                text,
+            ));
+        }
+        if keyboard.composition_state() == KeyboardCompositionState::Active {
+            return Err(SubmitKeyboardWithTextError::new(
+                SubmitKeyboardWithTextErrorKind::CompositionActive,
+                keyboard,
+                text,
+            ));
+        }
 
         let target = self.input_target_text().map_err(|kind| {
             SubmitKeyboardWithTextError::new(Text(kind), keyboard.clone(), text.clone())
