@@ -2400,6 +2400,90 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
 }
 
 #[test]
+fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() {
+    use crate::{
+        SubmitKeyboardErrorKind, SubmitKeyboardWithTextErrorKind, RuntimeConfig,
+    };
+    use runenui_core::CommittedTextEvent;
+
+    // Exactly three independent application producer roots, plus ONLY the
+    // capacity needed for one committed-text producer. Preflighting the text
+    // succeeds, but ordinary keyboard preflight MUST refuse capacity. Neither
+    // original event may acquire a WorkSequence or an InputSettled receipt.
+    let action_credits = TextOwnershipApp::action_producer_budget(&(), &()).queue_credits();
+    let text_credits = TextOwnershipApp::interaction_producer_budget(&()).queue_credits();
+    let capacity = action_credits * 3 + text_credits;
+    let mut app = AppRuntime::<TextOwnershipApp>::mount_with_config(
+        (),
+        RuntimeConfig::default().with_queue_capacity(capacity),
+    )
+    .unwrap_or_else(|error| unreachable!("bounded mount: {error}"));
+    let _ = app.pump(PumpBudget::new(128, 128, 128, 128));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("mounted focused text target"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("request text focus"));
+    let _ = app.pump(PumpBudget::new(128, 128, 128, 128));
+
+    for _ in 0..3 {
+        app.submit_action(())
+            .unwrap_or_else(|_| unreachable!("legal independent producer root"));
+    }
+    assert!(app.runtime.queue.preflight_commit(text_credits).is_ok());
+    assert!(app.runtime.queue.preflight_commit(text_credits + 1).is_err());
+    let before = app.runtime.queue.next_sequence();
+
+    let keyboard = KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::Code(String::from("KeyV")),
+        LogicalKey::Character(String::from("v")),
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        Some(device(71)),
+    );
+    let text = CommittedTextEvent::new("v", Some(device(71)))
+        .unwrap_or_else(|_| unreachable!("nonempty original text"));
+    let rejection = app
+        .submit_keyboard_with_text(keyboard, text)
+        .expect_err("preflighted text alone must not permit partial keyboard admission");
+    assert_eq!(
+        rejection.kind(),
+        SubmitKeyboardWithTextErrorKind::Keyboard(SubmitKeyboardErrorKind::Full)
+    );
+    assert_eq!(
+        app.runtime.queue.next_sequence(),
+        before,
+        "reserved second member must not allocate a WorkSequence if first refuses"
+    );
+    assert_eq!(rejection.text().text(), "v");
+    assert!(app.runtime.queue.preflight_commit(text_credits).is_ok());
+
+    let completed = app.pump(PumpBudget::new(128, 128, 128, 128))
+        .unwrap_or_else(|_| unreachable!("earlier unrelated actions finish"));
+    assert!(
+        !completed
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))),
+        "rejected pair may not manufacture either terminal receipt"
+    );
+}
+
+#[test]
 fn direct_composition_start_preflights_last_revision_without_binding_a_pending_owner() {
     let mut app = AppRuntime::<TextOwnershipApp>::mount(())
         .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
