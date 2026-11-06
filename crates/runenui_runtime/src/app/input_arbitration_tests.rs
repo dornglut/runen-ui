@@ -2411,6 +2411,72 @@ fn paired_keyboard_text_has_two_exact_terminal_receipts_before_390_actions() {
 }
 
 #[test]
+fn paired_keyboard_text_admits_behind_390_existing_actions_without_retarget_or_replay() {
+    use crate::UiInputFamily;
+
+    let mut app = focused_text_ownership_app();
+    let scope = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focused original lifetime"))
+        .scope()
+        .clone();
+
+    // Unlike the previous test's queued *followers*, these 390 legitimate
+    // actions are ALREADY ahead of the native occurrence. A single bounded
+    // pump cannot make the original keyboard or its text terminal.
+    for _ in 0..390 {
+        app.submit_action(())
+            .unwrap_or_else(|_| unreachable!("independent preceding app root"));
+    }
+    let (original_key, original_text) = original_keyboard_text_pair();
+    let (key, text) = app
+        .submit_keyboard_with_text(original_key, original_text)
+        .unwrap_or_else(|error| unreachable!("paired ingress behind backlog: {error}"));
+    assert!(key.sequence() < text.sequence());
+
+    let mut seen = Vec::new();
+    let mut completed = false;
+    for turn in 0..32 {
+        let batch = app
+            .pump(PumpBudget::new(128, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("bounded canonical M13 pump"));
+        for record in batch.ordered_records() {
+            if let InputArbitrationRecord::InputSettled(settled) = record
+                && (settled.sequence() == key.sequence()
+                    || settled.sequence() == text.sequence())
+            {
+                assert_eq!(settled.scope(), &scope);
+                assert_eq!(settled.device_id(), Some(device(71)));
+                assert!(
+                    matches!(settled.finality(), UiInputFinality::Committed(_)),
+                    "original text and keyboard both require truthful finality"
+                );
+                seen.push((settled.sequence(), settled.family()));
+            }
+        }
+        if turn == 0 {
+            assert!(
+                seen.is_empty(),
+                "390 preceding actions must not be mistaken for a settled original"
+            );
+        }
+        if batch.report().is_quiescent() {
+            completed = true;
+            break;
+        }
+    }
+    assert!(completed, "all preceding and original canonical work must finish");
+    assert_eq!(
+        seen,
+        [
+            (key.sequence(), UiInputFamily::Keyboard),
+            (text.sequence(), UiInputFamily::CommittedText)
+        ],
+        "exact original FIFO order and no duplicate terminal receipt"
+    );
+}
+
+#[test]
 fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() {
     use crate::{RuntimeConfig, SubmitKeyboardErrorKind, SubmitKeyboardWithTextErrorKind};
     use runenui_core::CommittedTextEvent;
