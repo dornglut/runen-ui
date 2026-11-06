@@ -252,9 +252,10 @@ fn public_host_pair_has_two_ordered_exact_input_receipts_with_trace_on_or_off() 
             text_receipts[0].finality(),
             UiInputFinality::Committed(_)
         ));
-        assert_eq!(
-            batch.processed_through().is_some_and(|last| last >= text.sequence()),
-            true,
+        assert!(
+            batch
+                .processed_through()
+                .is_some_and(|last| last >= text.sequence()),
             "an exact text terminal receipt cannot be inferred from keyboard alone"
         );
         let later = runtime
