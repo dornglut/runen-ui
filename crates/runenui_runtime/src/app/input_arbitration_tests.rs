@@ -2209,43 +2209,65 @@ impl UiApp for TextOwnershipApp {
     fn update((): &mut Self::State, (): Self::Action) {}
 }
 
-#[test]
-fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated() {
-    use crate::{SubmitKeyboardWithTextErrorKind, SubmitTextErrorKind, UiInputFamily};
-    use runenui_core::CommittedTextEvent;
+fn original_keyboard_text_pair() -> (KeyboardEvent, runenui_core::CommittedTextEvent) {
+    (
+        KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyV")),
+            LogicalKey::Character(String::from("v")),
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            Some(device(71)),
+        ),
+        runenui_core::CommittedTextEvent::new("v", Some(device(71)))
+            .unwrap_or_else(|_| unreachable!("nonempty original Unicode text")),
+    )
+}
 
-    let pair = || {
-        (
-            KeyboardEvent::new(
-                KeyboardPhase::Down,
-                PhysicalKey::Code(String::from("KeyV")),
-                LogicalKey::Character(String::from("v")),
-                KeyModifiers::NONE,
-                false,
-                KeyLocation::Standard,
-                KeyboardCompositionState::Inactive,
-                Some(device(71)),
-            ),
-            CommittedTextEvent::new("v", Some(device(71)))
-                .unwrap_or_else(|_| unreachable!("original Unicode text")),
-        )
-    };
+fn focused_text_ownership_app() -> AppRuntime<TextOwnershipApp> {
     let mut app = AppRuntime::<TextOwnershipApp>::mount(())
         .unwrap_or_else(|error| unreachable!("mount: {error}"));
     let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
-    // An unfocused original pair must be rejected BEFORE even its keyboard
-    // reaches M13, with both original values still owned by the caller.
-    let (key, text) = pair();
-    let error = app
-        .submit_keyboard_with_text(key, text)
-        .expect_err("no focused text recipient must reject both inputs");
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("mounted text owner"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focused recipient"));
+    let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
+    app
+}
+
+#[test]
+fn paired_keyboard_text_unfocused_refusal_preserves_originals() {
+    use crate::{SubmitKeyboardWithTextErrorKind, SubmitTextErrorKind};
+
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("mount: {error}"));
+    let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
+    let (keyboard, text) = original_keyboard_text_pair();
+    let Err(error) = app.submit_keyboard_with_text(keyboard, text) else {
+        unreachable!("unfocused original pair cannot enter M13")
+    };
     assert_eq!(
         error.kind(),
         SubmitKeyboardWithTextErrorKind::Text(SubmitTextErrorKind::NoFocusedTarget)
     );
     assert_eq!(
         error.keyboard().physical_key(),
-        &PhysicalKey::Code("KeyV".into())
+        &PhysicalKey::Code(String::from("KeyV"))
     );
     assert_eq!(error.text().text(), "v");
     assert!(
@@ -2254,149 +2276,138 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
             .ordered_records()
             .iter()
             .all(|record| !matches!(record, InputArbitrationRecord::InputSettled(_))),
-        "rejected original pair has no hidden first-member input settlement"
+        "rejected original pair has no hidden first-member settlement"
     );
+}
 
-    let target = app
-        .index()
-        .nodes()
-        .iter()
-        .find(|node| {
-            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
-        })
-        .unwrap_or_else(|| unreachable!("mounted target"))
-        .id()
-        .clone();
-    app.submit_command(
-        target,
-        SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic(),
-    )
-    .unwrap_or_else(|_| unreachable!("focus request"));
-    let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
-    let before = app
-        .input_ownership()
-        .unwrap_or_else(|_| unreachable!("focused snapshot"));
+#[test]
+fn paired_keyboard_text_rejects_wrong_source_phase_and_composition() {
+    use crate::SubmitKeyboardWithTextErrorKind;
 
-    let before_sequence = app.runtime.queue.next_sequence();
-    let (key, _) = pair();
-    let mismatched_text = CommittedTextEvent::new("v", Some(device(72)))
-        .unwrap_or_else(|_| unreachable!("nonempty foreign source text"));
-    let err = app
-        .submit_keyboard_with_text(key, mismatched_text)
-        .expect_err("foreign device cannot be paired with an original keyboard");
-    assert_eq!(err.kind(), SubmitKeyboardWithTextErrorKind::DeviceMismatch);
-    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
-    assert_eq!(err.text().device_id(), Some(device(72)));
+    let mut app = focused_text_ownership_app();
+    let before = app.runtime.queue.next_sequence();
 
-    let (down, text) = pair();
+    let (keyboard, _) = original_keyboard_text_pair();
+    let foreign_text = runenui_core::CommittedTextEvent::new("v", Some(device(72)))
+        .unwrap_or_else(|_| unreachable!("nonempty foreign source"));
+    let Err(mismatched) = app.submit_keyboard_with_text(keyboard, foreign_text) else {
+        unreachable!("paired source identities must match")
+    };
+    assert_eq!(
+        mismatched.kind(),
+        SubmitKeyboardWithTextErrorKind::DeviceMismatch
+    );
+    assert_eq!(mismatched.text().device_id(), Some(device(72)));
+
+    let (keyboard, text) = original_keyboard_text_pair();
     let up = KeyboardEvent::new(
         KeyboardPhase::Up,
-        down.physical_key().clone(),
-        down.logical_key().clone(),
-        down.modifiers(),
+        keyboard.physical_key().clone(),
+        keyboard.logical_key().clone(),
+        keyboard.modifiers(),
         false,
-        down.location(),
-        down.composition_state(),
-        down.device_id(),
+        keyboard.location(),
+        keyboard.composition_state(),
+        keyboard.device_id(),
     );
-    let err = app
-        .submit_keyboard_with_text(up, text)
-        .expect_err("a release is not an original committed-text key");
-    assert_eq!(err.kind(), SubmitKeyboardWithTextErrorKind::NotKeyDown);
-    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
+    let Err(released) = app.submit_keyboard_with_text(up, text) else {
+        unreachable!("key release cannot carry associated committed text")
+    };
+    assert_eq!(released.kind(), SubmitKeyboardWithTextErrorKind::NotKeyDown);
 
-    let (down, text) = pair();
+    let (keyboard, text) = original_keyboard_text_pair();
     let composing = KeyboardEvent::new(
         KeyboardPhase::Down,
-        down.physical_key().clone(),
-        down.logical_key().clone(),
-        down.modifiers(),
+        keyboard.physical_key().clone(),
+        keyboard.logical_key().clone(),
+        keyboard.modifiers(),
         false,
-        down.location(),
+        keyboard.location(),
         KeyboardCompositionState::Active,
-        down.device_id(),
+        keyboard.device_id(),
     );
-    let err = app
-        .submit_keyboard_with_text(composing, text)
-        .expect_err("composition keyboard may not duplicate an IME commit");
+    let Err(composition) = app.submit_keyboard_with_text(composing, text) else {
+        unreachable!("composing key cannot duplicate an IME commit")
+    };
     assert_eq!(
-        err.kind(),
+        composition.kind(),
         SubmitKeyboardWithTextErrorKind::CompositionActive
     );
-    assert_eq!(app.runtime.queue.next_sequence(), before_sequence);
+    assert_eq!(
+        app.runtime.queue.next_sequence(),
+        before,
+        "source/phase/composition refusals must allocate no input work"
+    );
+}
 
-    let (key, text) = pair();
-    let (keyboard, committed) = app
-        .submit_keyboard_with_text(key, text)
-        .unwrap_or_else(|e| unreachable!("paired native ingress: {e}"));
-    assert!(keyboard.sequence() < committed.sequence());
+#[test]
+fn paired_keyboard_text_has_two_exact_terminal_receipts_before_390_actions() {
+    use crate::UiInputFamily;
 
-    // A legal independent action backlog cannot steal the second member's
-    // already-reserved FIFO position or its exact original focus witness.
+    let mut app = focused_text_ownership_app();
+    let scope = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focused snapshot"))
+        .scope()
+        .clone();
+    let (keyboard, text) = original_keyboard_text_pair();
+    let (keyboard_receipt, text_receipt) = app
+        .submit_keyboard_with_text(keyboard, text)
+        .unwrap_or_else(|error| unreachable!("paired original: {error}"));
+    assert!(keyboard_receipt.sequence() < text_receipt.sequence());
+
     for _ in 0..390 {
         app.submit_action(())
-            .unwrap_or_else(|_| unreachable!("legal later application action"));
+            .unwrap_or_else(|_| unreachable!("legal later app action"));
     }
     let first = app
         .pump(PumpBudget::new(128, 64, 64, 64))
-        .unwrap_or_else(|_| unreachable!("canonical partial pump"));
+        .unwrap_or_else(|_| unreachable!("bounded M13 work"));
     assert_eq!(
         first.report().outcome(),
         crate::PumpOutcome::BudgetExhausted
     );
-    assert_eq!(
-        first
-            .ordered_records()
-            .iter()
-            .filter(|record| matches!(
-                record,
-                InputArbitrationRecord::InputSettled(settled)
-                    if settled.sequence() == keyboard.sequence()
-                        && settled.family() == UiInputFamily::Keyboard
-                        && settled.scope() == before.scope()
-                        && settled.device_id() == Some(device(71))
-            ))
-            .count(),
-        1
-    );
-    assert_eq!(
-        first
-            .ordered_records()
-            .iter()
-            .filter(|record| matches!(
-                record,
-                InputArbitrationRecord::InputSettled(settled)
-                    if settled.sequence() == committed.sequence()
-                        && settled.family() == UiInputFamily::CommittedText
-                        && settled.scope() == before.scope()
-                        && settled.device_id() == Some(device(71))
-            ))
-            .count(),
-        1
-    );
+    for (sequence, family) in [
+        (keyboard_receipt.sequence(), UiInputFamily::Keyboard),
+        (text_receipt.sequence(), UiInputFamily::CommittedText),
+    ] {
+        assert_eq!(
+            first
+                .ordered_records()
+                .iter()
+                .filter(|record| matches!(
+                    record,
+                    InputArbitrationRecord::InputSettled(settled)
+                        if settled.sequence() == sequence
+                            && settled.family() == family
+                            && settled.scope() == &scope
+                            && settled.device_id() == Some(device(71))
+                ))
+                .count(),
+            1,
+            "both original members must settle exactly once, before unrelated work"
+        );
+    }
     let mut settled = false;
     for _ in 0..32 {
         let next = app
             .pump(PumpBudget::new(128, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("bounded application backlog"));
+            .unwrap_or_else(|_| unreachable!("bounded M13 continuation"));
         assert!(
             !next.ordered_records().iter().any(|record| matches!(
-                record, InputArbitrationRecord::InputSettled(receipt)
-                    if receipt.sequence() == keyboard.sequence()
-                        || receipt.sequence() == committed.sequence()
+                record,
+                InputArbitrationRecord::InputSettled(receipt)
+                    if receipt.sequence() == keyboard_receipt.sequence()
+                        || receipt.sequence() == text_receipt.sequence()
             )),
-            "two original M13 receipts must never replay"
+            "settled original receipts never replay"
         );
         if next.report().is_quiescent() {
             settled = true;
             break;
         }
     }
-    assert!(
-        settled,
-        "finite independent 390-action work eventually settles"
-    );
+    assert!(settled, "finite 390-action work must eventually settle");
 }
 
 #[test]
@@ -2460,9 +2471,9 @@ fn paired_keyboard_failure_releases_reserved_text_without_first_member_commit() 
     );
     let text = CommittedTextEvent::new("v", Some(device(71)))
         .unwrap_or_else(|_| unreachable!("nonempty original text"));
-    let rejection = app
-        .submit_keyboard_with_text(keyboard, text)
-        .expect_err("preflighted text alone must not permit partial keyboard admission");
+    let Err(rejection) = app.submit_keyboard_with_text(keyboard, text) else {
+        unreachable!("text-only root capacity must refuse atomic keyboard ingress")
+    };
     assert_eq!(
         rejection.kind(),
         SubmitKeyboardWithTextErrorKind::Keyboard(SubmitKeyboardErrorKind::Full)
