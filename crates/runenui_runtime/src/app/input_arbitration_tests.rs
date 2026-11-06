@@ -2211,23 +2211,25 @@ impl UiApp for TextOwnershipApp {
 
 #[test]
 fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated() {
-    use runenui_core::CommittedTextEvent;
     use crate::{SubmitKeyboardWithTextErrorKind, SubmitTextErrorKind, UiInputFamily};
+    use runenui_core::CommittedTextEvent;
 
-    let pair = || (
-        KeyboardEvent::new(
-            KeyboardPhase::Down,
-            PhysicalKey::Code(String::from("KeyV")),
-            LogicalKey::Character(String::from("v")),
-            KeyModifiers::NONE,
-            false,
-            KeyLocation::Standard,
-            KeyboardCompositionState::Inactive,
-            Some(device(71)),
-        ),
-        CommittedTextEvent::new("v", Some(device(71)))
-            .unwrap_or_else(|_| unreachable!("original Unicode text")),
-    );
+    let pair = || {
+        (
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyV")),
+                LogicalKey::Character(String::from("v")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                Some(device(71)),
+            ),
+            CommittedTextEvent::new("v", Some(device(71)))
+                .unwrap_or_else(|_| unreachable!("original Unicode text")),
+        )
+    };
     let mut app = AppRuntime::<TextOwnershipApp>::mount(())
         .unwrap_or_else(|error| unreachable!("mount: {error}"));
     let _ = app.pump(PumpBudget::new(64, 64, 64, 64));
@@ -2241,7 +2243,10 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
         error.kind(),
         SubmitKeyboardWithTextErrorKind::Text(SubmitTextErrorKind::NoFocusedTarget)
     );
-    assert_eq!(error.keyboard().physical_key(), &PhysicalKey::Code("KeyV".into()));
+    assert_eq!(
+        error.keyboard().physical_key(),
+        &PhysicalKey::Code("KeyV".into())
+    );
     assert_eq!(error.text().text(), "v");
     assert!(
         app.pump(PumpBudget::new(64, 64, 64, 64))
@@ -2256,8 +2261,9 @@ fn paired_keyboard_text_admission_is_original_atomic_and_terminally_correlated()
         .index()
         .nodes()
         .iter()
-        .find(|node| node.authored_id()
-            == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!())))
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
         .unwrap_or_else(|| unreachable!("mounted target"))
         .id()
         .clone();
