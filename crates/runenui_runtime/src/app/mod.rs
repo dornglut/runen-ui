@@ -413,6 +413,27 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.submit_keyboard(event)
     }
 
+    /// Atomically appends an original host keyboard input and its associated
+    /// committed Unicode text to the SAME canonical FIFO, with two independently
+    /// correlated M13 terminal receipts. Neither original payload is admitted
+    /// on an error. The focus session and editing capability are checked once,
+    /// BEFORE the keyboard is queued, and processing remains deferred.
+    ///
+    /// # Errors
+    ///
+    /// Returns both unchanged events with the typed keyboard or text admission
+    /// cause when either original member cannot be queued.
+    pub fn submit_keyboard_with_text(
+        &mut self,
+        keyboard: crate::KeyboardEvent,
+        text: crate::CommittedTextEvent,
+    ) -> Result<
+        (crate::KeyboardSubmission, crate::TextSubmission),
+        crate::SubmitKeyboardWithTextError,
+    > {
+        self.runtime.submit_keyboard_with_text(keyboard, text)
+    }
+
     /// Appends committed Unicode text bound to the current text-capable focused lifetime.
     ///
     /// # Errors

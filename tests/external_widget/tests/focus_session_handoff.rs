@@ -332,6 +332,40 @@ fn retired_pending_presentation_entry_rejects_without_retarged_keyboard() {
 }
 
 #[test]
+fn paired_keyboard_text_refuses_unknown_pending_presentation_without_partial_ingress() {
+    use runenui_runtime::SubmitKeyboardWithTextErrorKind;
+
+    let (env, size) = environment();
+    let context = SurfaceBuildContext::tight(&env, size);
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: true })
+        .unwrap_or_else(|error| unreachable!("initial admission: {error}"));
+    focus(&mut runtime, "text");
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("pending presentation entry"));
+    let text = CommittedTextEvent::new("é", None)
+        .unwrap_or_else(|_| unreachable!("original Unicode text"));
+    let Err(error) = runtime.submit_keyboard_with_text(key(), text) else {
+        unreachable!("paired original cannot mix current and pending focus witnesses")
+    };
+    assert!(matches!(
+        error.kind(),
+        SubmitKeyboardWithTextErrorKind::Text(SubmitTextErrorKind::PendingFocusHandoff)
+    ));
+    assert_eq!(error.text().text(), "é");
+    let settled = runtime
+        .pump(FULL)
+        .unwrap_or_else(|_| unreachable!("canonical pump"));
+    assert!(
+        !settled
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))),
+        "a refused pair must create no keyboard or text terminal receipt"
+    );
+}
+
+#[test]
 fn exact_noop_presentation_entry_certifies_the_unchanged_focused_recipient() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);

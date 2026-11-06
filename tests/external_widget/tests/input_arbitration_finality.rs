@@ -194,6 +194,82 @@ impl UiApp for CompositionApp {
     fn update(_: &mut Self::State, (): ()) {}
 }
 
+#[test]
+fn public_host_pair_has_two_ordered_exact_input_receipts_with_trace_on_or_off() {
+    use runenui_core::CommittedTextEvent;
+
+    for trace_capacity in [0, 512] {
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let observations = Rc::new(RefCell::new(Vec::new()));
+        let mut runtime = focused::<CompositionApp>(observations, config);
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("original focused input scope"));
+        let scope = before.scope().clone();
+
+        let (keyboard, text) = runtime
+            .submit_keyboard_with_text(
+                key(),
+                CommittedTextEvent::new("é", None)
+                    .unwrap_or_else(|_| unreachable!("original committed Unicode text")),
+            )
+            .unwrap_or_else(|error| unreachable!("public paired ingress: {error}"));
+        assert!(
+            keyboard.sequence() < text.sequence(),
+            "both original members must get ordered canonical work identities"
+        );
+        runtime
+            .submit_action(())
+            .unwrap_or_else(|_| unreachable!("later independent application work"));
+        let batch = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("one canonical public pump"));
+        let emitted = settlements(&batch);
+        let keyboard_receipts: Vec<_> = emitted
+            .iter()
+            .filter(|record| record.sequence() == keyboard.sequence())
+            .collect();
+        let text_receipts: Vec<_> = emitted
+            .iter()
+            .filter(|record| record.sequence() == text.sequence())
+            .collect();
+        assert_eq!(keyboard_receipts.len(), 1);
+        assert_eq!(text_receipts.len(), 1);
+        exact_receipt(
+            keyboard_receipts[0],
+            &scope,
+            keyboard.sequence(),
+            UiInputFamily::Keyboard,
+        );
+        exact_receipt(
+            text_receipts[0],
+            &scope,
+            text.sequence(),
+            UiInputFamily::CommittedText,
+        );
+        assert!(matches!(
+            text_receipts[0].finality(),
+            UiInputFinality::Committed(_)
+        ));
+        assert!(
+            batch
+                .processed_through()
+                .is_some_and(|last| last >= text.sequence()),
+            "an exact text terminal receipt cannot be inferred from keyboard alone"
+        );
+        let later = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("later pending-work observation"));
+        assert!(
+            !settlements(&later).iter().any(|record| {
+                record.sequence() == keyboard.sequence() || record.sequence() == text.sequence()
+            }),
+            "canonical M13 input finality is once-only with and without trace"
+        );
+        trace_bound(&runtime, trace_capacity);
+    }
+}
+
 fn stale_composition_trace(runtime: &AppRuntime<CompositionApp>, sequence: WorkSequence) {
     assert!(
         runtime
@@ -436,6 +512,80 @@ fn causal_action_trace(
         TraceRecordKind::RoutedActionCollected
     ));
     assert_eq!(collected.work_sequence(), Some(native));
+}
+
+#[test]
+fn paired_keyboard_and_text_preserve_original_focus_across_aba() {
+    use runenui_core::CommittedTextEvent;
+
+    for trace_capacity in [0, 512] {
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let observations = Rc::new(RefCell::new(Vec::new()));
+        let mut app = focused::<CompositionApp>(observations, config);
+        let original = app
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("original focus owner"));
+        let scope = original.scope().clone();
+        let generation = original
+            .keyboard()
+            .focus_generation()
+            .unwrap_or_else(|| unreachable!("non-reused original focus session"));
+        let a = target(&mut app, "probe");
+        let b = target(&mut app, "second");
+
+        // Accepted predecessor commands leave current focus A at admission.
+        // When the original pair is reached, B and a fresh A generation have
+        // committed. Neither original member may silently retarget to new A.
+        app.submit_command(
+            b,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("B focus queued"));
+        app.submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("return A focus queued"));
+
+        let (keyboard, text) = app
+            .submit_keyboard_with_text(
+                key(),
+                CommittedTextEvent::new("é", None)
+                    .unwrap_or_else(|_| unreachable!("original Unicode text")),
+            )
+            .unwrap_or_else(|error| unreachable!("paired ingress: {error}"));
+        let batch = app
+            .pump(PumpBudget::new(64, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("committed FIFO focus A-B-A and input"));
+        let final_owner = app
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("new focused lifetime"));
+        assert_eq!(final_owner.keyboard().focused_node(), Some(&a));
+        assert_ne!(final_owner.keyboard().focus_generation(), Some(generation));
+        for (sequence, family) in [
+            (keyboard.sequence(), UiInputFamily::Keyboard),
+            (text.sequence(), UiInputFamily::CommittedText),
+        ] {
+            let matches: Vec<_> = settlements(&batch)
+                .into_iter()
+                .filter(|record| record.sequence() == sequence)
+                .collect();
+            assert_eq!(matches.len(), 1);
+            exact_receipt(matches[0], &scope, sequence, family);
+            assert!(
+                matches!(
+                    matches[0].finality(),
+                    UiInputFinality::ProcessingRejected(
+                        UiInputProcessingRejection::FocusBindingInvalidated
+                    )
+                ),
+                "original A focus is not the new A session"
+            );
+        }
+        trace_bound(&app, trace_capacity);
+    }
 }
 
 #[test]

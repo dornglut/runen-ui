@@ -48,6 +48,42 @@ scope retirement remain unchanged.
 
 Existing typed `submit_keyboard`, `submit_pointer`, `submit_text` and composition ingress keep their accepted receipts and rejection errors. A successful receipt carries the existing nonwrapping `WorkSequence`. An input is **Pending** until its exact sequence settles or its runtime scope is retired. Rejected admission produces **no** fabricated processing settlement; rejection or missing focus is not evidence that gameplay is permitted.
 
+### #549 — atomic original keyboard and associated committed text
+
+An original host keyboard **Down** may carry independently committed Unicode text in
+that **same native occurrence**. The optional host-neutral
+`AppRuntime::submit_keyboard_with_text` admits exactly those two immutable payloads
+as one **all-or-none ingress transaction** through the **existing** M13 FIFO. The
+ordinary single-input APIs remain unchanged. Keyboard and text must name the
+same original optional device identity; Up/Cancel and a composing keyboard
+may not be paired with committed text (IME composition/Commit has its own
+canonical ingress). The text-capable focused recipient, current edit capacity,
+queue root, work-sequence frontier and mandatory trace outcome are checked
+**before** admitting the keyboard member. A still-pending presentation-focus
+entry is a typed paired-ingress refusal (`PendingFocusHandoff`), even when
+an individual keyboard could certify that entry: the ordinary keyboard and
+text APIs can otherwise select different focus witnesses for one original pair.
+
+A typed refusal returns **both** original events and produces **neither**
+original member's work sequence, settlement or trace acceptance, including
+when the second member's bounded reservation succeeded but the first cannot
+be admitted. On success, both members enter the one FIFO in original order,
+with separate exact work-sequence receipts and the **same original** runtime
+focus-session witness, without any pump, routed UI callback or focus mutation
+between members; normal host wake signaling is still permitted. Reserving the second member first prevents other queued application
+work from interposing between the two original members. A terminal keyboard
+receipt during later legal partial work neither proves global quiescence nor
+retroactively admits text; both original members are already in M13.
+
+Processing may still truthfully reject either reached member if its original
+focus session or effective committed-text capability was retired (including
+A→B→A focus ABA); success at ingress is not proof of eventual text editing.
+Both terminal facts remain independently correlated, at most once, under
+bounded pumps and trace-disabled, truncated or redacted diagnostics. This
+contract supplies **no** Runenwerk physical-key mapping, source/window authority,
+gameplay permission, extra event queue, automatic IME lifecycle handoff or
+completed-Present assertion.
+
 Each *reached host-submitted input envelope* yields at most one `UiInputSettlement` at its truthful final processing boundary, with `UiInputFamily`, exact `(scope, sequence)`, relevant optional surface/device/pointer identity, finality and the **effective post-operation ownership revision**:
 
 - `Committed(UiInputRoutingFacts)` means the authoritative input operation committed, including an **integrity-only release**; it does **not** imply an actionable widget default, accepted application action, or transitive completion of commands enqueued afterward.
